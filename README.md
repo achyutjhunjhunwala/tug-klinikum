@@ -489,17 +489,23 @@ interface HospitalMetric {
 // Wait Time Data
 '.wazimo__waittime .fact'        // "56 min"
 
-// Patient Counts  
-'.wazimo__waiting .fact'         // "33 Patient*innen sind in Behandlung"
-'.wazimo__ambulance .fact'       // "13 Patient*innen kamen mit Rettungswagen"
+// Patient Counts (All 4 Data Points)
+'.wazimo__waiting .fact'         // "33 Patient*innen sind in Behandlung oder warten"
+'.wazimo__ambulance .fact'       // "13 Patient*innen kamen mit dem Rettungswagen"  
+'.wazimo__emergencies .fact'     // "1 Lebensbedrohliche Notfälle"
 
 // Last Updated
 '.wazimo__age'                   // "zuletzt aktualisiert vor 14 min"
 ```
 
 **Data Extraction Logic**:
+- **Priority-Based Extraction**: Specific selectors checked first, fallback to keyword matching
 - **German Language Support**: Keywords include `behandlung`, `warten`, `rettungswagen`
 - **Pattern Matching**: `/zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i`
+- **Data Validation**: 
+  - Wait times: 0-480 minutes (8 hours max)
+  - Patient counts: 0-200 patients (sanity checks)
+  - Rejects unreasonable values (prevents thousands/large numbers)
 - **Fallback Selectors**: Generic selectors for robustness
 
 > **Note**: Selectors are specific to Vivantes website structure. If scraping fails, check for website layout changes and update selectors accordingly.

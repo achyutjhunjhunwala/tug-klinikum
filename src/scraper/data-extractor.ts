@@ -200,13 +200,21 @@ export class DataExtractor {
       const patientSelectors = [
         '.wazimo__waiting',
         '.wazimo__waiting .fact',
-        '.wazimo__ambulance',
+        '.wazimo__ambulance', 
         '.wazimo__ambulance .fact',
+        '.wazimo__emergencies',         // NEW: Emergency cases selector (plural!)
+        '.wazimo__emergencies .fact',   // NEW: Emergency cases fact
         '.wazimo--box .fact',
         '[class*="patient"]',
         '[class*="anzahl"]',
+        '[class*="notfall"]',           // NEW: Emergency cases
+        '[class*="emergency"]',         // NEW: Emergency cases
         'span:has-text("Patient")',
+        'span:has-text("Notfall")',     // NEW: Emergency cases
+        'span:has-text("Lebensbedrohlich")', // NEW: Life-threatening emergencies
         'div:has-text("Patienten")',
+        'div:has-text("Notfälle")',     // NEW: Emergency cases
+        'div:has-text("Lebensbedrohliche")', // NEW: Life-threatening emergencies
       ];
 
       for (const selector of patientSelectors) {
@@ -216,6 +224,10 @@ export class DataExtractor {
             const text = await element.textContent();
             if (text) {
               data[`patients_${selector}`] = text.trim();
+              this.observability.logger.debug('Patient data found', {
+                selector,
+                text: text.trim(),
+              });
             }
           }
         } catch {
@@ -297,10 +309,13 @@ export class DataExtractor {
         'parse.has_update_delay': !!result.updateDelayMinutes,
       });
 
-      this.observability.logger.debug('Data parsing completed', {
+      this.observability.logger.info('Data parsing completed', {
         waitTime: result.waitTimeMinutes,
         totalPatients: result.totalPatients,
+        ambulancePatients: result.ambulancePatients,
+        emergencyCases: result.emergencyCases,
         updateDelay: result.updateDelayMinutes,
+        rawDataKeys: Object.keys(rawData),
       });
 
       return result as ScrapedData;
@@ -330,13 +345,22 @@ export class DataExtractor {
               minutes *= 60;
             }
 
-            this.observability.logger.debug('Wait time extracted', {
-              source: key,
-              value,
-              extractedMinutes: minutes,
-            });
+            // Sanity check: wait times should be reasonable (0-480 minutes = 8 hours)
+            if (minutes >= 0 && minutes <= 480) {
+              this.observability.logger.info('Wait time extracted', {
+                source: key,
+                value,
+                extractedMinutes: minutes,
+              });
 
-            return minutes;
+              return minutes;
+            } else {
+              this.observability.logger.warn('Rejected unreasonable wait time', {
+                source: key,
+                value,
+                extractedMinutes: minutes,
+              });
+            }
           }
         }
       }
@@ -349,46 +373,92 @@ export class DataExtractor {
     data: Record<string, any>,
     type: 'total' | 'ambulance' | 'emergency'
   ): number | undefined {
-    const keywords = {
+    // Priority-based extraction - check most specific selectors first
+    const selectorPriority = {
       total: [
-        'patient', 'gesamt', 'total', 'anzahl', 'behandlung', 'warten', 
-        'wazimo__waiting', 'waiting'
+        'patients_.wazimo__waiting',           // Highest priority: specific selector
+        'patients_.wazimo__waiting .fact',
+        'patients_.wazimo--box .fact',
       ],
       ambulance: [
-        'rettung', 'ambulance', 'krankenwagen', 'rtw', 'rettungswagen',
-        'wazimo__ambulance', 'kamen mit dem'
+        'patients_.wazimo__ambulance',         // Highest priority: specific selector  
+        'patients_.wazimo__ambulance .fact',
+        'patients_.wazimo--box .fact',
       ],
-      emergency: ['notfall', 'emergency', 'dringend', 'urgent'],
+      emergency: [
+        'patients_.wazimo__emergencies',       // Highest priority: specific selector (plural!)
+        'patients_.wazimo__emergencies .fact',
+        'patients_[class*="notfall"]',         // Emergency-related selectors
+        'patients_span:has-text("Lebensbedrohlich")',
+        'patients_div:has-text("Lebensbedrohliche")',
+      ],
     };
 
+    const keywords = {
+      total: ['behandlung', 'warten', 'patient*innen sind'],
+      ambulance: ['rettungswagen', 'kamen mit dem', 'ambulance'],
+      emergency: ['lebensbedrohlich', 'notfall', 'notfälle', 'emergency', 'dringend'],
+    };
+
+    const prioritySelectors = selectorPriority[type];
     const searchKeywords = keywords[type];
 
-    // First, try to find data from specific Vivantes selectors
+    // First, try priority selectors (most specific)
+    for (const prioritySelector of prioritySelectors) {
+      if (data[prioritySelector]) {
+        const value = data[prioritySelector];
+        if (typeof value === 'string') {
+          const match = value.match(/(\d+)/);
+          if (match && match[1]) {
+            const count = parseInt(match[1], 10);
+            
+            // Sanity check: patient counts should be reasonable (0-200)
+            if (count >= 0 && count <= 200) {
+              this.observability.logger.info('Patient count extracted (priority)', {
+                type,
+                selector: prioritySelector,
+                value,
+                extractedCount: count,
+              });
+              return count;
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback: search through all data with keyword matching
     for (const [key, value] of Object.entries(data)) {
       if (typeof value === 'string') {
         const lowerValue = value.toLowerCase();
         const lowerKey = key.toLowerCase();
 
-        // Check if this data point is relevant for this type
         const isRelevant = searchKeywords.some(
           keyword => lowerValue.includes(keyword) || lowerKey.includes(keyword)
         );
 
         if (isRelevant) {
-          // Handle Vivantes specific format: "33 Patient*innen sind in Behandlung oder warten"
-          // or "13 Patient*innen kamen mit dem Rettungswagen"
           const match = value.match(/(\d+)/);
           if (match && match[1]) {
             const count = parseInt(match[1], 10);
-
-            this.observability.logger.debug('Patient count extracted', {
-              type,
-              source: key,
-              value,
-              extractedCount: count,
-            });
-
-            return count;
+            
+            // Sanity check: reject unreasonable numbers
+            if (count >= 0 && count <= 200) {
+              this.observability.logger.info('Patient count extracted (fallback)', {
+                type,
+                source: key,
+                value,
+                extractedCount: count,
+              });
+              return count;
+            } else {
+              this.observability.logger.warn('Rejected unreasonable patient count', {
+                type,
+                source: key,
+                value,
+                extractedCount: count,
+              });
+            }
           }
         }
       }
