@@ -39,24 +39,20 @@ export class HealthChecker {
   ) {}
 
   async performHealthCheck(): Promise<HealthCheckResult> {
-    return this.observability.tracer.wrapAsync('health_check_full', async (span) => {
+    return this.observability.tracer.wrapAsync('health_check_full', async span => {
       const timestamp = new Date();
       const uptime = Date.now() - this.startTime;
 
       this.observability.logger.info('Performing full health check');
 
       // Check all components in parallel
-      const [
-        databaseHealth,
-        scraperHealth,
-        observabilityHealth,
-        jobRunnerHealth,
-      ] = await Promise.all([
-        this.checkDatabase(),
-        this.checkScraper(),
-        this.checkObservability(),
-        this.jobRunner ? this.checkJobRunner() : Promise.resolve(null),
-      ]);
+      const [databaseHealth, scraperHealth, observabilityHealth, jobRunnerHealth] =
+        await Promise.all([
+          this.checkDatabase(),
+          this.checkScraper(),
+          this.checkObservability(),
+          this.jobRunner ? this.checkJobRunner() : Promise.resolve(null),
+        ]);
 
       // Gather system metrics
       const metrics = {
@@ -127,7 +123,6 @@ export class HealthChecker {
           documentCount: health.documentCount,
         },
       };
-
     } catch (error) {
       const responseTime = Date.now() - startTime;
 
@@ -156,7 +151,6 @@ export class HealthChecker {
           config: this.scraper.getConfig(),
         },
       };
-
     } catch (error) {
       const responseTime = Date.now() - startTime;
 
@@ -186,7 +180,6 @@ export class HealthChecker {
           version: this.observability.version,
         },
       };
-
     } catch (error) {
       const responseTime = Date.now() - startTime;
 
@@ -218,7 +211,7 @@ export class HealthChecker {
 
       // Determine health based on recent execution success rate
       let healthStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
-      
+
       if (stats.totalExecutions > 0) {
         if (stats.successRate < 0.5) {
           healthStatus = 'unhealthy';
@@ -239,7 +232,6 @@ export class HealthChecker {
           averageDuration: stats.averageDuration,
         },
       };
-
     } catch (error) {
       const responseTime = Date.now() - startTime;
 
@@ -286,7 +278,6 @@ export class HealthChecker {
       ]);
 
       return dbConnected && scraperHealthy && observabilityReady;
-
     } catch (error) {
       this.observability.recordError('readiness_check_failed', error as Error);
       return false;
@@ -299,10 +290,9 @@ export class HealthChecker {
       // Simple check that the process is responsive
       const memUsage = process.memoryUsage();
       const cpuUsage = process.cpuUsage();
-      
+
       // Basic sanity checks
       return memUsage.heapUsed > 0 && cpuUsage.user >= 0;
-
     } catch (error) {
       this.observability.recordError('liveness_check_failed', error as Error);
       return false;
@@ -316,20 +306,19 @@ export class HealthChecker {
   }> {
     try {
       const result = await this.performHealthCheck();
-      
+
       if (result.status === 'healthy') {
         return { status: 'ok', message: 'All systems operational' };
       } else {
         const unhealthyComponents = Object.entries(result.components)
           .filter(([, health]) => health.status !== 'healthy')
           .map(([name]) => name);
-        
+
         return {
           status: 'error',
           message: `Issues detected in: ${unhealthyComponents.join(', ')}`,
         };
       }
-
     } catch (error) {
       return {
         status: 'error',

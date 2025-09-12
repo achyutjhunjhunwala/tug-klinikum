@@ -1,6 +1,6 @@
-import { 
-  ObservabilityProvider, 
-  ObservabilityConfig 
+import {
+  ObservabilityProvider,
+  ObservabilityConfig,
 } from '@/observability/interfaces/observability-provider.interface';
 import { ElasticObservabilityProvider } from '@/observability/implementations/elastic-observability';
 import { GrafanaObservabilityProvider } from '@/observability/implementations/grafana-observability';
@@ -9,22 +9,19 @@ export type ObservabilityProviderType = 'elastic' | 'grafana' | 'dual';
 
 export class ObservabilityFactory {
   static create(
-    type: ObservabilityProviderType, 
+    type: ObservabilityProviderType,
     config: ObservabilityConfig
   ): ObservabilityProvider | ObservabilityProvider[] {
     switch (type) {
       case 'elastic':
         return new ElasticObservabilityProvider(config);
-      
+
       case 'grafana':
         return new GrafanaObservabilityProvider(config);
-      
+
       case 'dual':
-        return [
-          new ElasticObservabilityProvider(config),
-          new GrafanaObservabilityProvider(config),
-        ];
-      
+        return [new ElasticObservabilityProvider(config), new GrafanaObservabilityProvider(config)];
+
       default:
         throw new Error(`Unsupported observability provider type: ${type}`);
     }
@@ -33,34 +30,41 @@ export class ObservabilityFactory {
   static createFromEnv(): ObservabilityProvider[] {
     const config = ObservabilityFactory.createConfigFromEnv();
     const providerTypes = ObservabilityFactory.getProviderTypesFromEnv();
-    
+
     const providers: ObservabilityProvider[] = [];
-    
+
     for (const providerType of providerTypes) {
       if (providerType === 'dual') {
-        const dualProviders = ObservabilityFactory.create('dual', config) as ObservabilityProvider[];
+        const dualProviders = ObservabilityFactory.create(
+          'dual',
+          config
+        ) as ObservabilityProvider[];
         providers.push(...dualProviders);
       } else {
         const provider = ObservabilityFactory.create(providerType, config) as ObservabilityProvider;
         providers.push(provider);
       }
     }
-    
+
     return providers;
   }
 
   static createConfigFromEnv(): ObservabilityConfig {
     const serviceName = process.env['OTEL_SERVICE_NAME'] || 'hospital-scraper';
     const serviceVersion = process.env['OTEL_SERVICE_VERSION'] || '1.0.0';
-    const environment = (process.env['NODE_ENV'] || 'development') as 'development' | 'staging' | 'production';
-    
+    const environment = (process.env['NODE_ENV'] || 'development') as
+      | 'development'
+      | 'staging'
+      | 'production';
+
     const config: ObservabilityConfig = {
       serviceName,
       serviceVersion,
       environment,
       otelEndpoint: process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] || 'http://localhost:4317',
-      otelHeaders: process.env['OTEL_EXPORTER_OTLP_HEADERS'] ? 
-        JSON.parse(process.env['OTEL_EXPORTER_OTLP_HEADERS']) : undefined,
+      otelHeaders: process.env['OTEL_EXPORTER_OTLP_HEADERS']
+        ? JSON.parse(process.env['OTEL_EXPORTER_OTLP_HEADERS'])
+        : undefined,
       traceSampling: parseFloat(process.env['OTEL_TRACE_SAMPLING'] || '1.0'),
       metricInterval: parseInt(process.env['OTEL_METRIC_INTERVAL'] || '30000', 10),
       logLevel: (process.env['LOG_LEVEL'] || 'info') as 'debug' | 'info' | 'warn' | 'error',
@@ -69,7 +73,9 @@ export class ObservabilityFactory {
     // Add Elastic config if available
     if (process.env['ELASTICSEARCH_CLOUD_URL'] && process.env['ELASTICSEARCH_API_KEY']) {
       config.elasticConfig = {
-        apmServerUrl: process.env['ELASTICSEARCH_CLOUD_URL'].replace(':9243', ':443').replace('es.', 'apm.'),
+        apmServerUrl: process.env['ELASTICSEARCH_CLOUD_URL']
+          .replace(':9243', ':443')
+          .replace('es.', 'apm.'),
         apiKey: process.env['ELASTICSEARCH_API_KEY'],
       };
     }
@@ -111,22 +117,22 @@ export class ObservabilityFactory {
     if (!config.serviceName) {
       throw new Error('Service name is required');
     }
-    
+
     if (!config.serviceVersion) {
       throw new Error('Service version is required');
     }
-    
+
     if (!config.otelEndpoint) {
       throw new Error('OTEL endpoint is required');
     }
-    
+
     // Validate provider-specific configs
     if (config.elasticConfig) {
       if (!config.elasticConfig.apmServerUrl || !config.elasticConfig.apiKey) {
         throw new Error('Elastic APM server URL and API key are required');
       }
     }
-    
+
     if (config.grafanaConfig) {
       const required = ['userId', 'apiKey', 'prometheusUrl', 'lokiUrl', 'tempoUrl'];
       for (const field of required) {

@@ -54,11 +54,6 @@ export class OtelLogger implements ObservabilityLogger {
     }
   }
 
-  child(bindings: Record<string, any>): ObservabilityLogger {
-    const childLogger = new OtelLogger(this.serviceName, this.logLevel);
-    childLogger.bindings = { ...this.bindings, ...bindings };
-    return childLogger;
-  }
 
   private shouldLog(level: 'debug' | 'info' | 'warn' | 'error'): boolean {
     const levels = ['debug', 'info', 'warn', 'error'];

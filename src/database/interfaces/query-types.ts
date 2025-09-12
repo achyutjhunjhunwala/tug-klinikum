@@ -1,4 +1,4 @@
-import { HospitalMetric, TimeRange } from '@/models/hospital-metric';
+import { TimeRange } from '@/models/hospital-metric';
 
 export interface QueryFilter {
   timeRange?: TimeRange;
@@ -12,18 +12,6 @@ export interface QueryFilter {
   sortOrder?: 'asc' | 'desc';
 }
 
-export interface AggregationOptions {
-  interval: '1h' | '6h' | '12h' | '1d' | '1w' | '1M';
-  metric: 'avg' | 'min' | 'max' | 'sum' | 'count';
-  field: keyof Pick<HospitalMetric, 'waitTimeMinutes' | 'totalPatients' | 'ambulancePatients' | 'emergencyCases'>;
-}
-
-export interface TimeAggregation {
-  timestamp: Date;
-  value: number;
-  count: number;
-  interval: string;
-}
 
 export interface DatabaseHealth {
   connected: boolean;

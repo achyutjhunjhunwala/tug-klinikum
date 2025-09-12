@@ -34,11 +34,8 @@ export class CronManager {
 
   constructor(private readonly observability: ObservabilityProvider) {}
 
-  scheduleJob(
-    config: CronJobConfig,
-    handler: CronJobHandler
-  ): void {
-    return this.observability.tracer.wrapSync('cron_schedule_job', (span) => {
+  scheduleJob(config: CronJobConfig, handler: CronJobHandler): void {
+    return this.observability.tracer.wrapSync('cron_schedule_job', span => {
       span.setAttributes({
         'cron.job_name': config.name,
         'cron.schedule': config.schedule,
@@ -73,12 +70,8 @@ export class CronManager {
       if (config.timezone) {
         scheduleOptions.timezone = config.timezone;
       }
-      
-      const task = cron.schedule(
-        config.schedule,
-        wrappedHandler,
-        scheduleOptions
-      );
+
+      const task = cron.schedule(config.schedule, wrappedHandler, scheduleOptions);
 
       const managedJob: ManagedCronJob = {
         config,
@@ -112,7 +105,7 @@ export class CronManager {
       const correlationId = this.observability.createCorrelationId();
       this.observability.setCorrelationId(correlationId);
 
-      return this.observability.tracer.wrapAsync('cron_job_execution', async (span) => {
+      return this.observability.tracer.wrapAsync('cron_job_execution', async span => {
         span.setAttributes({
           'cron.job_name': jobName,
           'cron.correlation_id': correlationId,
@@ -149,7 +142,6 @@ export class CronManager {
           });
 
           this.observability.recordOperation(`cron_job_${jobName}`, duration, true);
-
         } catch (error) {
           status.errorCount++;
           status.lastError = error instanceof Error ? error.message : 'Unknown error';
@@ -168,7 +160,6 @@ export class CronManager {
           });
 
           this.observability.recordOperation(`cron_job_${jobName}`, duration, false);
-
         } finally {
           status.isRunning = false;
           this.updateNextRunTime(status);
@@ -178,7 +169,7 @@ export class CronManager {
   }
 
   async runJobImmediately(jobName: string): Promise<void> {
-    return this.observability.tracer.wrapAsync('cron_run_immediate', async (span) => {
+    return this.observability.tracer.wrapAsync('cron_run_immediate', async span => {
       const job = this.jobs.get(jobName);
       if (!job) {
         throw new Error(`Job not found: ${jobName}`);
@@ -200,11 +191,7 @@ export class CronManager {
         job: jobName,
       });
 
-      const wrappedHandler = this.createWrappedHandler(
-        jobName,
-        job.handler,
-        job.status
-      );
+      const wrappedHandler = this.createWrappedHandler(jobName, job.handler, job.status);
 
       await wrappedHandler();
     });
@@ -268,7 +255,7 @@ export class CronManager {
   }
 
   async shutdown(): Promise<void> {
-    return this.observability.tracer.wrapAsync('cron_shutdown', async (span) => {
+    return this.observability.tracer.wrapAsync('cron_shutdown', async span => {
       this.observability.logger.info('Shutting down cron manager', {
         jobCount: this.jobs.size,
         runningJobs: this.getRunningJobs(),
@@ -282,9 +269,9 @@ export class CronManager {
           this.observability.logger.info('Waiting for running job to complete', {
             job: jobName,
           });
-          
+
           // Wait for running job to complete (with timeout)
-          const timeout = new Promise<void>((resolve) => {
+          const timeout = new Promise<void>(resolve => {
             setTimeout(() => {
               this.observability.logger.warn('Job shutdown timeout, forcing stop', {
                 job: jobName,
@@ -293,7 +280,7 @@ export class CronManager {
             }, 30000); // 30 second timeout
           });
 
-          const waitForCompletion = new Promise<void>((resolve) => {
+          const waitForCompletion = new Promise<void>(resolve => {
             const checkInterval = setInterval(() => {
               if (!job.status.isRunning) {
                 clearInterval(checkInterval);

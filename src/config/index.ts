@@ -4,17 +4,10 @@ import { createDatabaseConfig } from './database';
 import { createScrapingConfig } from './scraper';
 import { createObservabilityConfig, getObservabilityProviders } from './observability';
 
-
 // Re-export configuration functions
-export { createDatabaseConfig, validateDatabaseConfig } from './database';
-export { createScrapingConfig, validateScrapingConfig, getDefaultScrapingConfig } from './scraper';
-export { 
-  createObservabilityConfig, 
-  validateObservabilityConfig, 
-  getObservabilityProviders,
-  isObservabilityEnabled,
-  getDefaultObservabilityConfig 
-} from './observability';
+export { createDatabaseConfig } from './database';
+export { createScrapingConfig } from './scraper';
+export { createObservabilityConfig, getObservabilityProviders } from './observability';
 
 // Application-wide configuration
 const ApplicationConfigSchema = z.object({
@@ -30,7 +23,7 @@ export type ApplicationConfig = z.infer<typeof ApplicationConfigSchema>;
 
 export function createApplicationConfig(): ApplicationConfig {
   const config: ApplicationConfig = ApplicationConfigSchema.parse({
-    nodeEnv: process.env['NODE_ENV'] as 'development' | 'staging' | 'production' || 'development',
+    nodeEnv: (process.env['NODE_ENV'] as 'development' | 'staging' | 'production') || 'development',
     port: parseInt(process.env['PORT'] || '3000', 10),
     scrapingInterval: parseInt(process.env['SCRAPING_INTERVAL'] || '30', 10),
     timezone: process.env['TIMEZONE'] || 'Europe/Berlin',
@@ -39,18 +32,6 @@ export function createApplicationConfig(): ApplicationConfig {
   });
 
   return config;
-}
-
-export function validateApplicationConfig(config: ApplicationConfig): void {
-  try {
-    ApplicationConfigSchema.parse(config);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const issues = error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`);
-      throw new Error(`Application configuration validation failed: ${issues.join(', ')}`);
-    }
-    throw error;
-  }
 }
 
 // Master configuration function that validates all configs
@@ -71,14 +52,13 @@ export function validateAllConfigurations(): {
       if (observability.logLevel === 'debug') {
         console.warn('Warning: Debug logging is enabled in production environment');
       }
-      
+
       if (!observability.elasticConfig && !observability.grafanaConfig) {
         throw new Error('At least one observability provider must be configured in production');
       }
     }
 
     return { app, database, scraping, observability };
-
   } catch (error) {
     console.error('Configuration validation failed:', error);
     throw error;
@@ -87,20 +67,17 @@ export function validateAllConfigurations(): {
 
 // Environment validation
 export function validateRequiredEnvironmentVariables(): void {
-  const required = [
-    'DB_TYPE',
-    'OTEL_SERVICE_NAME',
-  ];
+  const required = ['DB_TYPE', 'OTEL_SERVICE_NAME'];
 
   const conditionalRequired = {
-    'ELASTICSEARCH_CLOUD_URL': () => process.env['DB_TYPE'] === 'elasticsearch',
-    'ELASTICSEARCH_API_KEY': () => process.env['DB_TYPE'] === 'elasticsearch',
-    'POSTGRESQL_URL': () => process.env['DB_TYPE'] === 'postgresql',
-    'GRAFANA_CLOUD_USER_ID': () => getObservabilityProviders().includes('grafana'),
-    'GRAFANA_CLOUD_API_KEY': () => getObservabilityProviders().includes('grafana'),
-    'GRAFANA_CLOUD_PROMETHEUS_URL': () => getObservabilityProviders().includes('grafana'),
-    'GRAFANA_CLOUD_LOKI_URL': () => getObservabilityProviders().includes('grafana'),
-    'GRAFANA_CLOUD_TEMPO_URL': () => getObservabilityProviders().includes('grafana'),
+    ELASTICSEARCH_CLOUD_URL: () => process.env['DB_TYPE'] === 'elasticsearch',
+    ELASTICSEARCH_API_KEY: () => process.env['DB_TYPE'] === 'elasticsearch',
+    POSTGRESQL_URL: () => process.env['DB_TYPE'] === 'postgresql',
+    GRAFANA_CLOUD_USER_ID: () => getObservabilityProviders().includes('grafana'),
+    GRAFANA_CLOUD_API_KEY: () => getObservabilityProviders().includes('grafana'),
+    GRAFANA_CLOUD_PROMETHEUS_URL: () => getObservabilityProviders().includes('grafana'),
+    GRAFANA_CLOUD_LOKI_URL: () => getObservabilityProviders().includes('grafana'),
+    GRAFANA_CLOUD_TEMPO_URL: () => getObservabilityProviders().includes('grafana'),
   };
 
   const missing: string[] = [];
@@ -127,7 +104,7 @@ export function validateRequiredEnvironmentVariables(): void {
 // Configuration summary for logging
 export function getConfigurationSummary(): Record<string, any> {
   const configs = validateAllConfigurations();
-  
+
   return {
     application: {
       environment: configs.app.nodeEnv,

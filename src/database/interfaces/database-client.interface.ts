@@ -1,14 +1,9 @@
 import { 
   HospitalMetric, 
-  CreateHospitalMetric, 
-  HospitalMetricSummary, 
-  HospitalMetricTrend,
-  TimeRange 
+  CreateHospitalMetric
 } from '@/models/hospital-metric';
 import { 
   QueryFilter, 
-  AggregationOptions, 
-  TimeAggregation, 
   DatabaseHealth,
   BulkInsertResult,
   QueryResult
@@ -28,45 +23,19 @@ export interface DatabaseClient {
    */
   insert(data: CreateHospitalMetric): Promise<string>;
   bulkInsert(data: CreateHospitalMetric[]): Promise<BulkInsertResult>;
-  findById(id: string): Promise<HospitalMetric | null>;
-  update(id: string, data: Partial<HospitalMetric>): Promise<boolean>;
-  delete(id: string): Promise<boolean>;
 
   /**
    * Query Operations
    */
   query(filters: QueryFilter): Promise<QueryResult<HospitalMetric>>;
-  count(filters?: QueryFilter): Promise<number>;
-  getLatest(): Promise<HospitalMetric | null>;
 
-  /**
-   * Aggregation Operations
-   */
-  aggregateByTime(
-    options: AggregationOptions,
-    filters?: QueryFilter
-  ): Promise<TimeAggregation[]>;
-  
-  getSummary(timeRange?: TimeRange): Promise<HospitalMetricSummary>;
-  
-  getTrends(
-    interval: '1h' | '6h' | '12h' | '1d' | '1w',
-    timeRange?: TimeRange
-  ): Promise<HospitalMetricTrend[]>;
 
   /**
    * Maintenance Operations
    */
   createIndex(): Promise<void>;
-  deleteIndex(): Promise<void>;
-  reindex(): Promise<void>;
   cleanup(olderThan: Date): Promise<number>;
 
-  /**
-   * Backup & Migration
-   */
-  exportData(timeRange?: TimeRange): Promise<HospitalMetric[]>;
-  importData(data: HospitalMetric[]): Promise<BulkInsertResult>;
 }
 
 export interface DatabaseConnectionConfig {

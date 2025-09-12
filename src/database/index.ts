@@ -1,12 +1,13 @@
 // Database interfaces
-export type { DatabaseClient, DatabaseConnectionConfig } from './interfaces/database-client.interface';
-export type { 
-  QueryFilter, 
-  AggregationOptions, 
-  TimeAggregation, 
+export type {
+  DatabaseClient,
+  DatabaseConnectionConfig,
+} from './interfaces/database-client.interface';
+export type {
+  QueryFilter,
   DatabaseHealth,
   BulkInsertResult,
-  QueryResult 
+  QueryResult,
 } from './interfaces/query-types';
 
 // Database implementations
@@ -17,10 +18,4 @@ export { PostgreSQLClient } from './implementations/postgresql-client';
 export { DatabaseFactory } from './factory';
 
 // Re-export models for convenience
-export type { 
-  HospitalMetric, 
-  CreateHospitalMetric, 
-  HospitalMetricSummary, 
-  HospitalMetricTrend,
-  TimeRange 
-} from '@/models/hospital-metric';
+export type { HospitalMetric, CreateHospitalMetric, TimeRange } from '@/models/hospital-metric';

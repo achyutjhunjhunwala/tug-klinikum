@@ -20,9 +20,10 @@ export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;
 export function createDatabaseConfig(): DatabaseConnectionConfig {
   const config: DatabaseConfig = DatabaseConfigSchema.parse({
     type: process.env['DB_TYPE'] || 'elasticsearch',
-    url: process.env['DB_TYPE'] === 'elasticsearch' 
-      ? process.env['ELASTICSEARCH_CLOUD_URL']
-      : process.env['POSTGRESQL_URL'],
+    url:
+      process.env['DB_TYPE'] === 'elasticsearch'
+        ? process.env['ELASTICSEARCH_CLOUD_URL']
+        : process.env['POSTGRESQL_URL'],
     apiKey: process.env['ELASTICSEARCH_API_KEY'],
     username: process.env['POSTGRESQL_USERNAME'],
     password: process.env['POSTGRESQL_PASSWORD'],
@@ -49,16 +50,4 @@ export function createDatabaseConfig(): DatabaseConnectionConfig {
   }
 
   return config;
-}
-
-export function validateDatabaseConfig(config: DatabaseConnectionConfig): void {
-  try {
-    DatabaseConfigSchema.parse(config);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const issues = error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`);
-      throw new Error(`Database configuration validation failed: ${issues.join(', ')}`);
-    }
-    throw error;
-  }
 }

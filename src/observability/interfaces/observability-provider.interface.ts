@@ -29,7 +29,6 @@ export interface ObservabilityLogger {
   info(message: string, context?: Record<string, any>): void;
   warn(message: string, context?: Record<string, any>): void;
   error(message: string, error?: Error, context?: Record<string, any>): void;
-  child(bindings: Record<string, any>): ObservabilityLogger;
   logApplicationStart(): void;
   logApplicationShutdown(): void;
   logHealthCheck(component: string, healthy: boolean, responseTime: number): void;

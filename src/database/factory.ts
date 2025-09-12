@@ -1,4 +1,7 @@
-import { DatabaseClient, DatabaseConnectionConfig } from '@/database/interfaces/database-client.interface';
+import {
+  DatabaseClient,
+  DatabaseConnectionConfig,
+} from '@/database/interfaces/database-client.interface';
 import { ElasticsearchClient } from '@/database/implementations/elasticsearch-client';
 import { PostgreSQLClient } from '@/database/implementations/postgresql-client';
 
@@ -16,7 +19,7 @@ export class DatabaseFactory {
 
   static createFromEnv(): DatabaseClient {
     const dbType = process.env['DB_TYPE'] as 'elasticsearch' | 'postgresql';
-    
+
     if (!dbType) {
       throw new Error('DB_TYPE environment variable is required');
     }
@@ -57,13 +60,13 @@ export class DatabaseFactory {
 
   static async testConnection(config: DatabaseConnectionConfig): Promise<boolean> {
     const client = DatabaseFactory.create(config);
-    
+
     try {
       await client.connect();
       const health = await client.healthCheck();
       await client.disconnect();
       return health.connected;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

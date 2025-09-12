@@ -23,30 +23,14 @@ export const HospitalMetricSchema = z.object({
 
 export type HospitalMetric = z.infer<typeof HospitalMetricSchema>;
 
-export const CreateHospitalMetricSchema = HospitalMetricSchema.omit({ 
-  id: true, 
-  timestamp: true 
+export const CreateHospitalMetricSchema = HospitalMetricSchema.omit({
+  id: true,
+  timestamp: true,
 });
 
 export type CreateHospitalMetric = z.infer<typeof CreateHospitalMetricSchema>;
 
-export interface HospitalMetricSummary {
-  totalRecords: number;
-  avgWaitTime: number;
-  minWaitTime: number;
-  maxWaitTime: number;
-  successRate: number;
-  lastUpdated: Date;
-}
-
 export interface TimeRange {
   startTime: Date;
   endTime: Date;
-}
-
-export interface HospitalMetricTrend {
-  period: string;
-  avgWaitTime: number;
-  patientCount: number;
-  timestamp: Date;
 }

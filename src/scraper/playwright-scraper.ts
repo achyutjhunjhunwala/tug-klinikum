@@ -44,13 +44,13 @@ export class PlaywrightScraper {
       config: config.browser,
       observability,
     });
-    
+
     this.dataExtractor = new DataExtractor(observability);
     this.retryHandler = new RetryHandler(observability);
   }
 
   async initialize(): Promise<void> {
-    return this.observability.tracer.wrapAsync('scraper_initialize', async (span) => {
+    return this.observability.tracer.wrapAsync('scraper_initialize', async span => {
       span.setAttributes({
         'scraper.id': this.config.scraperId,
         'scraper.target_url': this.config.targetUrl,
@@ -74,7 +74,7 @@ export class PlaywrightScraper {
     const correlationId = this.observability.createCorrelationId();
     this.observability.setCorrelationId(correlationId);
 
-    return this.observability.tracer.wrapAsync('scraper_scrape', async (span) => {
+    return this.observability.tracer.wrapAsync('scraper_scrape', async span => {
       span.setAttributes({
         'scraper.correlation_id': correlationId,
         'scraper.target_url': this.config.targetUrl,
@@ -137,7 +137,6 @@ export class PlaywrightScraper {
           });
 
           return result;
-
         } else {
           const errorMessage = retryResult.error?.message || 'Unknown scraping error';
           const result: ScrapingResult = {
@@ -164,11 +163,15 @@ export class PlaywrightScraper {
             'scraper.retries': retryResult.attempts - 1,
           });
 
-          this.observability.logger.error('Scraping operation failed', retryResult.error || new Error(errorMessage), {
-            operation: 'scraping_error',
-            target_url: this.config.targetUrl,
-            duration: totalTime,
-          });
+          this.observability.logger.error(
+            'Scraping operation failed',
+            retryResult.error || new Error(errorMessage),
+            {
+              operation: 'scraping_error',
+              target_url: this.config.targetUrl,
+              duration: totalTime,
+            }
+          );
 
           this.observability.metrics.scrapingFailures.add(1, {
             source: this.config.targetUrl,
@@ -181,7 +184,6 @@ export class PlaywrightScraper {
 
           return result;
         }
-
       } catch (error) {
         const totalTime = Date.now() - startTime;
         const errorMessage = error instanceof Error ? error.message : 'Unexpected error';
@@ -226,11 +228,11 @@ export class PlaywrightScraper {
     userAgent?: string;
   }> {
     const page = await this.browserManager.createPage();
-    
+
     try {
       // Navigate to target URL
       const pageLoadStart = Date.now();
-      
+
       await page.goto(this.config.targetUrl, {
         waitUntil: 'networkidle',
         timeout: this.config.pageTimeout,
@@ -267,14 +269,13 @@ export class PlaywrightScraper {
         extractionTime,
         userAgent,
       };
-
     } finally {
       await this.browserManager.closePage(page);
     }
   }
 
   async shutdown(): Promise<void> {
-    return this.observability.tracer.wrapAsync('scraper_shutdown', async (span) => {
+    return this.observability.tracer.wrapAsync('scraper_shutdown', async span => {
       this.observability.logger.info('Shutting down Playwright scraper', {
         scraperId: this.config.scraperId,
       });
@@ -298,11 +299,11 @@ export class PlaywrightScraper {
     try {
       const page = await this.browserManager.createPage();
       await page.goto(this.config.targetUrl);
-      
+
       const screenshot = await this.browserManager.takeScreenshot(page, filename);
-      
+
       await this.browserManager.closePage(page);
-      
+
       return screenshot;
     } catch (error) {
       this.observability.recordError('screenshot_failed', error as Error);
@@ -311,7 +312,7 @@ export class PlaywrightScraper {
   }
 
   async healthCheck(): Promise<boolean> {
-    return this.observability.tracer.wrapAsync('scraper_health_check', async (span) => {
+    return this.observability.tracer.wrapAsync('scraper_health_check', async span => {
       try {
         if (!this.browserManager.isInitialized()) {
           await this.browserManager.initialize();
@@ -326,7 +327,6 @@ export class PlaywrightScraper {
         });
 
         return true;
-
       } catch (error) {
         span.setAttributes({
           'health_check.success': false,
@@ -342,7 +342,7 @@ export class PlaywrightScraper {
   // Configuration methods
   updateConfig(updates: Partial<ScrapingConfig>): void {
     Object.assign(this.config, updates);
-    
+
     this.observability.logger.info('Scraper configuration updated', {
       updates,
       newConfig: this.config,

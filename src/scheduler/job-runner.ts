@@ -34,7 +34,7 @@ export class JobRunner {
   ) {}
 
   async initialize(): Promise<void> {
-    return this.observability.tracer.wrapAsync('job_runner_initialize', async (span) => {
+    return this.observability.tracer.wrapAsync('job_runner_initialize', async span => {
       span.setAttributes({
         'job_runner.scraping_interval': this.config.scrapingInterval,
         'job_runner.timezone': this.config.timezone,
@@ -68,11 +68,11 @@ export class JobRunner {
   async executeScrapingJob(): Promise<JobExecutionResult> {
     const jobId = this.observability.createCorrelationId();
     const startTime = new Date();
-    
+
     this.currentJobId = jobId;
     this.isRunning = true;
 
-    return this.observability.tracer.wrapAsync('job_execution', async (span) => {
+    return this.observability.tracer.wrapAsync('job_execution', async span => {
       span.setAttributes({
         'job.id': jobId,
         'job.type': 'scraping',
@@ -89,7 +89,7 @@ export class JobRunner {
       try {
         // Execute scraping
         const scrapingResult = await this.scraper.scrape();
-        
+
         let recordsInserted = 0;
 
         if (scrapingResult.success && scrapingResult.data) {
@@ -108,7 +108,6 @@ export class JobRunner {
               job_id: jobId,
               source: 'vivantes',
             });
-
           } catch (dbError) {
             this.observability.recordError('database_insert_failed', dbError as Error, {
               job_id: jobId,
@@ -157,7 +156,6 @@ export class JobRunner {
             duration,
           });
         }
-
       } catch (error) {
         const endTime = new Date();
         const duration = endTime.getTime() - startTime.getTime();
@@ -182,7 +180,6 @@ export class JobRunner {
         this.observability.recordError('job_execution_failed', error as Error, {
           job_id: jobId,
         });
-
       } finally {
         this.isRunning = false;
         this.currentJobId = undefined;
@@ -196,20 +193,24 @@ export class JobRunner {
   }
 
   async performHealthCheck(): Promise<boolean> {
-    return this.observability.tracer.wrapAsync('job_runner_health_check', async (span) => {
+    return this.observability.tracer.wrapAsync('job_runner_health_check', async span => {
       const healthResults: Record<string, boolean> = {};
 
       try {
         // Check database health
         const dbHealth = await this.database.healthCheck();
         healthResults['database'] = dbHealth.connected;
-        
-        this.observability.recordHealthCheck('database', dbHealth.connected, dbHealth.responseTimeMs);
+
+        this.observability.recordHealthCheck(
+          'database',
+          dbHealth.connected,
+          dbHealth.responseTimeMs
+        );
 
         // Check scraper health
         const scraperHealthy = await this.scraper.healthCheck();
         healthResults['scraper'] = scraperHealthy;
-        
+
         this.observability.recordHealthCheck('scraper', scraperHealthy, 0);
 
         const overallHealthy = Object.values(healthResults).every(healthy => healthy);
@@ -226,7 +227,6 @@ export class JobRunner {
         });
 
         return overallHealthy;
-
       } catch (error) {
         span.setAttributes({
           'health_check.overall': false,
@@ -240,7 +240,7 @@ export class JobRunner {
   }
 
   async shutdown(): Promise<void> {
-    return this.observability.tracer.wrapAsync('job_runner_shutdown', async (span) => {
+    return this.observability.tracer.wrapAsync('job_runner_shutdown', async span => {
       this.observability.logger.info('Shutting down job runner', {
         isRunning: this.isRunning,
         currentJobId: this.currentJobId,
@@ -255,7 +255,7 @@ export class JobRunner {
         const timeout = 60000; // 60 seconds
         const startWait = Date.now();
 
-        while (this.isRunning && (Date.now() - startWait) < timeout) {
+        while (this.isRunning && Date.now() - startWait < timeout) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
@@ -331,11 +331,14 @@ export class JobRunner {
     const successfulExecutions = this.executionHistory.filter(exec => exec.success).length;
     const failedExecutions = totalExecutions - successfulExecutions;
     const successRate = totalExecutions > 0 ? successfulExecutions / totalExecutions : 0;
-    
+
     const totalDuration = this.executionHistory.reduce((sum, exec) => sum + exec.duration, 0);
     const averageDuration = totalExecutions > 0 ? totalDuration / totalExecutions : 0;
-    
-    const totalRecordsInserted = this.executionHistory.reduce((sum, exec) => sum + exec.recordsInserted, 0);
+
+    const totalRecordsInserted = this.executionHistory.reduce(
+      (sum, exec) => sum + exec.recordsInserted,
+      0
+    );
 
     return {
       totalExecutions,
@@ -349,7 +352,7 @@ export class JobRunner {
 
   private addToExecutionHistory(result: JobExecutionResult): void {
     this.executionHistory.push(result);
-    
+
     // Keep history size manageable
     if (this.executionHistory.length > this.maxHistorySize) {
       this.executionHistory = this.executionHistory.slice(-this.maxHistorySize);

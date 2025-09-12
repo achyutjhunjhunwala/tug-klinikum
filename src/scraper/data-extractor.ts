@@ -33,8 +33,8 @@ export class DataExtractor {
     scraperId: string
   ): Promise<DataExtractionResult> {
     const startTime = Date.now();
-    
-    return this.observability.tracer.wrapAsync('data_extraction', async (span) => {
+
+    return this.observability.tracer.wrapAsync('data_extraction', async span => {
       span.setAttributes({
         'extraction.url': sourceUrl,
         'extraction.scraper_id': scraperId,
@@ -60,7 +60,7 @@ export class DataExtractor {
 
         // Parse and validate the scraped data
         const parsedData = await this.parseScrapedData(rawData);
-        
+
         // Validate the data
         const validatedData = ScrapedDataSchema.parse(parsedData);
 
@@ -107,10 +107,9 @@ export class DataExtractor {
         });
 
         return result;
-
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown extraction error';
-        
+
         const result: DataExtractionResult = {
           success: false,
           error: errorMessage,
@@ -135,17 +134,23 @@ export class DataExtractor {
   }
 
   private async waitForPageReady(page: Page): Promise<void> {
-    return this.observability.tracer.wrapAsync('wait_page_ready', async (span) => {
+    return this.observability.tracer.wrapAsync('wait_page_ready', async span => {
       // Wait for network to be idle
       await page.waitForLoadState('networkidle', { timeout: 30000 });
-      
+
       // Wait for specific elements that indicate the page is ready
       const waitPromises = [
         // Wait for main content area
-        page.waitForSelector('.content, .main, #main, .container', { timeout: 10000 }).catch(() => null),
-        
+        page
+          .waitForSelector('.content, .main, #main, .container', { timeout: 10000 })
+          .catch(() => null),
+
         // Wait for any wait time displays
-        page.waitForSelector('[class*="wait"], [class*="time"], [id*="wait"], [id*="time"]', { timeout: 5000 }).catch(() => null),
+        page
+          .waitForSelector('[class*="wait"], [class*="time"], [id*="wait"], [id*="time"]', {
+            timeout: 5000,
+          })
+          .catch(() => null),
       ];
 
       await Promise.allSettled(waitPromises);
@@ -161,7 +166,7 @@ export class DataExtractor {
   }
 
   private async scrapePageData(page: Page): Promise<Record<string, any>> {
-    return this.observability.tracer.wrapAsync('scrape_page_data', async (span) => {
+    return this.observability.tracer.wrapAsync('scrape_page_data', async span => {
       const data: Record<string, any> = {};
 
       // Extract wait time information
@@ -186,7 +191,7 @@ export class DataExtractor {
               data[`waitTime_${selector}`] = text.trim();
             }
           }
-        } catch (error) {
+        } catch {
           // Continue with next selector
         }
       }
@@ -211,7 +216,7 @@ export class DataExtractor {
               data[`patients_${selector}`] = text.trim();
             }
           }
-        } catch (error) {
+        } catch {
           // Continue with next selector
         }
       }
@@ -237,7 +242,7 @@ export class DataExtractor {
               data[`update_${selector}`] = text.trim();
             }
           }
-        } catch (error) {
+        } catch {
           // Continue with next selector
         }
       }
@@ -252,7 +257,8 @@ export class DataExtractor {
       data['pageTitle'] = await page.title();
 
       span.setAttributes({
-        'scrape.selectors_tried': waitTimeSelectors.length + patientSelectors.length + updateSelectors.length,
+        'scrape.selectors_tried':
+          waitTimeSelectors.length + patientSelectors.length + updateSelectors.length,
         'scrape.data_points_found': Object.keys(data).length,
       });
 
@@ -261,7 +267,7 @@ export class DataExtractor {
   }
 
   private async parseScrapedData(rawData: Record<string, any>): Promise<ScrapedData> {
-    return this.observability.tracer.wrapAsync('parse_scraped_data', async (span) => {
+    return this.observability.tracer.wrapAsync('parse_scraped_data', async span => {
       const result: Partial<ScrapedData> = {};
 
       // Parse wait time from various data points
@@ -313,18 +319,18 @@ export class DataExtractor {
           const match = value.match(pattern);
           if (match && match[1]) {
             let minutes = parseInt(match[1], 10);
-            
+
             // Convert hours to minutes if needed
             if (value.toLowerCase().includes('std') || value.toLowerCase().includes('hour')) {
               minutes *= 60;
             }
-            
+
             this.observability.logger.debug('Wait time extracted', {
               source: key,
               value,
               extractedMinutes: minutes,
             });
-            
+
             return minutes;
           }
         }
@@ -334,7 +340,10 @@ export class DataExtractor {
     return null;
   }
 
-  private extractPatientCount(data: Record<string, any>, type: 'total' | 'ambulance' | 'emergency'): number | undefined {
+  private extractPatientCount(
+    data: Record<string, any>,
+    type: 'total' | 'ambulance' | 'emergency'
+  ): number | undefined {
     const keywords = {
       total: ['patient', 'gesamt', 'total', 'anzahl'],
       ambulance: ['rettung', 'ambulance', 'krankenwagen', 'rtw'],
@@ -347,24 +356,24 @@ export class DataExtractor {
       if (typeof value === 'string') {
         const lowerValue = value.toLowerCase();
         const lowerKey = key.toLowerCase();
-        
+
         // Check if this data point is relevant for this type
-        const isRelevant = searchKeywords.some(keyword => 
-          lowerValue.includes(keyword) || lowerKey.includes(keyword)
+        const isRelevant = searchKeywords.some(
+          keyword => lowerValue.includes(keyword) || lowerKey.includes(keyword)
         );
 
         if (isRelevant) {
           const match = value.match(/(\d+)/);
           if (match && match[1]) {
             const count = parseInt(match[1], 10);
-            
+
             this.observability.logger.debug('Patient count extracted', {
               type,
               source: key,
               value,
               extractedCount: count,
             });
-            
+
             return count;
           }
         }
@@ -376,11 +385,7 @@ export class DataExtractor {
 
   private extractUpdateDelay(data: Record<string, any>): number | undefined {
     // Look for "vor X min" or similar patterns
-    const patterns = [
-      /vor\s*(\d+)\s*min/i,
-      /(\d+)\s*min.*ago/i,
-      /updated\s*(\d+)\s*min/i,
-    ];
+    const patterns = [/vor\s*(\d+)\s*min/i, /(\d+)\s*min.*ago/i, /updated\s*(\d+)\s*min/i];
 
     for (const [key, value] of Object.entries(data)) {
       if (typeof value === 'string') {
@@ -388,13 +393,13 @@ export class DataExtractor {
           const match = value.match(pattern);
           if (match && match[1]) {
             const delay = parseInt(match[1], 10);
-            
+
             this.observability.logger.debug('Update delay extracted', {
               source: key,
               value,
               extractedDelay: delay,
             });
-            
+
             return delay;
           }
         }
@@ -403,5 +408,4 @@ export class DataExtractor {
 
     return undefined;
   }
-
 }

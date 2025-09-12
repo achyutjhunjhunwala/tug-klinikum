@@ -45,8 +45,8 @@ export class RetryHandler {
   ): Promise<RetryResult<T>> {
     const finalConfig = { ...this.defaultConfig, ...this.config, ...customConfig };
     const startTime = Date.now();
-    
-    return this.observability.tracer.wrapAsync('retry_operation', async (span) => {
+
+    return this.observability.tracer.wrapAsync('retry_operation', async span => {
       span.setAttributes({
         'retry.operation': operationName,
         'retry.max_attempts': finalConfig.maxAttempts,
@@ -64,8 +64,10 @@ export class RetryHandler {
 
       while (attempt < finalConfig.maxAttempts) {
         attempt++;
-        
-        const attemptSpan = this.observability.tracer.startSpan(`${operationName}_attempt_${attempt}`);
+
+        const attemptSpan = this.observability.tracer.startSpan(
+          `${operationName}_attempt_${attempt}`
+        );
         attemptSpan.setAttributes({
           'retry.attempt': attempt,
           'retry.max_attempts': finalConfig.maxAttempts,
@@ -103,10 +105,9 @@ export class RetryHandler {
             attempts: attempt,
             totalTime,
           };
-
         } catch (error) {
           lastError = error as Error;
-          
+
           attemptSpan.recordException(lastError);
           attemptSpan.setStatus({ code: 2, message: lastError.message }); // ERROR
           attemptSpan.end();
@@ -170,9 +171,9 @@ export class RetryHandler {
     }
 
     // Check if error is retryable
-    const isRetryableError = config.retryableErrors.some(retryableError => 
-      error.name.includes(retryableError) || 
-      error.message.includes(retryableError)
+    const isRetryableError = config.retryableErrors.some(
+      retryableError =>
+        error.name.includes(retryableError) || error.message.includes(retryableError)
     );
 
     if (!isRetryableError) {
@@ -190,14 +191,14 @@ export class RetryHandler {
   private calculateDelay(attempt: number, config: RetryConfig): number {
     // Exponential backoff with jitter
     const baseDelay = config.baseDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
-    
+
     // Add jitter (±25% of base delay)
     const jitter = baseDelay * 0.25 * (Math.random() * 2 - 1);
     const delayWithJitter = baseDelay + jitter;
-    
+
     // Cap at max delay
     const finalDelay = Math.min(delayWithJitter, config.maxDelayMs);
-    
+
     return Math.max(finalDelay, config.baseDelayMs);
   }
 

@@ -7,14 +7,9 @@ import {
 import {
   HospitalMetric,
   CreateHospitalMetric,
-  HospitalMetricSummary,
-  HospitalMetricTrend,
-  TimeRange,
 } from '@/models/hospital-metric';
 import {
   QueryFilter,
-  AggregationOptions,
-  TimeAggregation,
   DatabaseHealth,
   BulkInsertResult,
   QueryResult,
@@ -31,7 +26,7 @@ export class ElasticsearchClient implements DatabaseClient {
     this.client = new Client({
       node: config.url,
       auth: {
-        apiKey: config.apiKey
+        apiKey: config.apiKey!
       }
     });
   }
@@ -136,54 +131,8 @@ export class ElasticsearchClient implements DatabaseClient {
     };
   }
 
-  async findById(id: string): Promise<HospitalMetric | null> {
-    try {
-      const response = await this.client.get({
-        index: this.indexName,
-        id,
-      });
 
-      return response._source as HospitalMetric;
-    } catch (error: any) {
-      if (error.statusCode === 404) {
-        return null;
-      }
-      throw error;
-    }
-  }
 
-  async update(id: string, data: Partial<HospitalMetric>): Promise<boolean> {
-    try {
-      await this.client.update({
-        index: this.indexName,
-        id,
-        body: { doc: data },
-        refresh: 'wait_for',
-      });
-      return true;
-    } catch (error: any) {
-      if (error.statusCode === 404) {
-        return false;
-      }
-      throw error;
-    }
-  }
-
-  async delete(id: string): Promise<boolean> {
-    try {
-      await this.client.delete({
-        index: this.indexName,
-        id,
-        refresh: 'wait_for',
-      });
-      return true;
-    } catch (error: any) {
-      if (error.statusCode === 404) {
-        return false;
-      }
-      throw error;
-    }
-  }
 
   async query(filters: QueryFilter): Promise<QueryResult<HospitalMetric>> {
     const query = this.buildQuery(filters);
@@ -209,122 +158,10 @@ export class ElasticsearchClient implements DatabaseClient {
     };
   }
 
-  async count(filters?: QueryFilter): Promise<number> {
-    const query = filters ? this.buildQuery(filters) : { match_all: {} };
-    const response = await this.client.count({
-      index: this.indexName,
-      body: { query },
-    });
 
-    return response.count;
-  }
 
-  async getLatest(): Promise<HospitalMetric | null> {
-    const result = await this.query({
-      sortBy: 'timestamp',
-      sortOrder: 'desc',
-      limit: 1,
-    });
 
-    return result.data[0] || null;
-  }
 
-  async aggregateByTime(
-    options: AggregationOptions,
-    filters?: QueryFilter
-  ): Promise<TimeAggregation[]> {
-    const query = filters ? this.buildQuery(filters) : { match_all: {} };
-    
-    const response = await this.client.search({
-      index: this.indexName,
-      body: {
-        query,
-        size: 0,
-        aggs: {
-          time_buckets: {
-            date_histogram: {
-              field: 'timestamp',
-              fixed_interval: options.interval,
-              min_doc_count: 1,
-            },
-            aggs: {
-              metric_value: {
-                [options.metric]: {
-                  field: options.field,
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const aggregations = response.aggregations as any;
-    if (!aggregations?.time_buckets) {
-      return [];
-    }
-    return aggregations.time_buckets.buckets.map((bucket: any) => ({
-      timestamp: new Date(bucket.key_as_string),
-      value: bucket.metric_value.value || 0,
-      count: bucket.doc_count,
-      interval: options.interval,
-    }));
-  }
-
-  async getSummary(timeRange?: TimeRange): Promise<HospitalMetricSummary> {
-    const filters: QueryFilter = timeRange ? { timeRange } : {};
-    const query = this.buildQuery(filters);
-
-    const response = await this.client.search({
-      index: this.indexName,
-      body: {
-        query,
-        size: 0,
-        aggs: {
-          avg_wait_time: { avg: { field: 'waitTimeMinutes' } },
-          min_wait_time: { min: { field: 'waitTimeMinutes' } },
-          max_wait_time: { max: { field: 'waitTimeMinutes' } },
-          success_count: { 
-            filter: { term: { scrapingSuccess: true } } 
-          },
-          total_count: { value_count: { field: 'id' } },
-          latest_timestamp: { max: { field: 'timestamp' } },
-        },
-      },
-    });
-
-    const aggs = response.aggregations as any;
-    if (!aggs) {
-      throw new Error('Aggregations not found in Elasticsearch response');
-    }
-    const totalCount = aggs.total_count.value;
-
-    return {
-      totalRecords: totalCount,
-      avgWaitTime: Math.round(aggs.avg_wait_time.value || 0),
-      minWaitTime: Math.round(aggs.min_wait_time.value || 0),
-      maxWaitTime: Math.round(aggs.max_wait_time.value || 0),
-      successRate: totalCount > 0 ? aggs.success_count.doc_count / totalCount : 0,
-      lastUpdated: new Date(aggs.latest_timestamp.value_as_string),
-    };
-  }
-
-  async getTrends(
-    interval: '1h' | '6h' | '12h' | '1d' | '1w',
-    timeRange?: TimeRange
-  ): Promise<HospitalMetricTrend[]> {
-    const aggregations = await this.aggregateByTime(
-      { interval, metric: 'avg', field: 'waitTimeMinutes' },
-      timeRange ? { timeRange } : undefined
-    );
-
-    return aggregations.map(agg => ({
-      period: interval,
-      avgWaitTime: Math.round(agg.value),
-      patientCount: agg.count,
-      timestamp: agg.timestamp,
-    }));
-  }
 
   async createIndex(): Promise<void> {
     await this.client.indices.create({
@@ -362,29 +199,6 @@ export class ElasticsearchClient implements DatabaseClient {
     });
   }
 
-  async deleteIndex(): Promise<void> {
-    await this.client.indices.delete({ index: this.indexName });
-  }
-
-  async reindex(): Promise<void> {
-    const tempIndex = `${this.indexName}-temp`;
-    
-    await this.client.reindex({
-      body: {
-        source: { index: this.indexName },
-        dest: { index: tempIndex },
-      },
-      wait_for_completion: true,
-    });
-
-    await this.deleteIndex();
-    await this.client.indices.clone({
-      index: tempIndex,
-      target: this.indexName,
-    });
-    
-    await this.client.indices.delete({ index: tempIndex });
-  }
 
   async cleanup(olderThan: Date): Promise<number> {
     const response = await this.client.deleteByQuery({
@@ -404,15 +218,6 @@ export class ElasticsearchClient implements DatabaseClient {
     return response.deleted || 0;
   }
 
-  async exportData(timeRange?: TimeRange): Promise<HospitalMetric[]> {
-    const filters = timeRange ? { timeRange } : {};
-    const result = await this.query({ ...filters, limit: 10000 });
-    return result.data;
-  }
-
-  async importData(data: HospitalMetric[]): Promise<BulkInsertResult> {
-    return this.bulkInsert(data);
-  }
 
   private async ensureIndexExists(): Promise<void> {
     const exists = await this.client.indices.exists({ index: this.indexName });

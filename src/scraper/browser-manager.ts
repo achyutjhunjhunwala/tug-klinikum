@@ -8,15 +8,19 @@ export interface BrowserConfig {
   headless: boolean;
   timeout: number;
   userAgent?: string | undefined;
-  viewport?: {
-    width: number;
-    height: number;
-  } | undefined;
-  proxy?: {
-    server: string;
-    username?: string | undefined;
-    password?: string | undefined;
-  } | undefined;
+  viewport?:
+    | {
+        width: number;
+        height: number;
+      }
+    | undefined;
+  proxy?:
+    | {
+        server: string;
+        username?: string | undefined;
+        password?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface BrowserManagerOptions {
@@ -32,8 +36,8 @@ export class BrowserManager {
 
   async initialize(): Promise<void> {
     const { config, observability } = this.options;
-    
-    return observability.tracer.wrapAsync('browser_initialize', async (span) => {
+
+    return observability.tracer.wrapAsync('browser_initialize', async span => {
       span.setAttributes({
         'browser.type': config.type,
         'browser.headless': config.headless,
@@ -48,7 +52,7 @@ export class BrowserManager {
       try {
         // Launch browser
         this.browser = await this.launchBrowser(config);
-        
+
         // Create context with configuration
         this.context = await this.browser.newContext({
           userAgent: config.userAgent || this.getDefaultUserAgent(),
@@ -65,7 +69,6 @@ export class BrowserManager {
           type: config.type,
           contextId: this.context.toString(),
         });
-
       } catch (error) {
         observability.recordError('browser_initialization', error as Error, {
           browser_type: config.type,
@@ -77,14 +80,14 @@ export class BrowserManager {
 
   async createPage(): Promise<Page> {
     const { observability } = this.options;
-    
-    return observability.tracer.wrapAsync('browser_create_page', async (span) => {
+
+    return observability.tracer.wrapAsync('browser_create_page', async span => {
       if (!this.context) {
         throw new Error('Browser context not initialized. Call initialize() first.');
       }
 
       const page = await this.context.newPage();
-      
+
       // Set up page event listeners for debugging
       page.on('console', msg => {
         observability.logger.debug('Browser console', {
@@ -124,10 +127,10 @@ export class BrowserManager {
 
   async closePage(page: Page): Promise<void> {
     const { observability } = this.options;
-    
-    return observability.tracer.wrapAsync('browser_close_page', async (span) => {
+
+    return observability.tracer.wrapAsync('browser_close_page', async span => {
       await page.close();
-      
+
       span.setAttributes({
         'page.closed': true,
       });
@@ -138,8 +141,8 @@ export class BrowserManager {
 
   async shutdown(): Promise<void> {
     const { observability } = this.options;
-    
-    return observability.tracer.wrapAsync('browser_shutdown', async (span) => {
+
+    return observability.tracer.wrapAsync('browser_shutdown', async span => {
       observability.logger.info('Shutting down browser');
 
       try {
@@ -158,7 +161,6 @@ export class BrowserManager {
         });
 
         observability.logger.info('Browser shutdown completed');
-
       } catch (error) {
         observability.recordError('browser_shutdown', error as Error);
         throw error;
@@ -175,7 +177,7 @@ export class BrowserManager {
       headless: config.headless,
       timeout: config.timeout,
     };
-    
+
     if (config.proxy) {
       launchOptions.proxy = config.proxy;
     }
@@ -208,9 +210,11 @@ export class BrowserManager {
 
   private getDefaultUserAgent(): string {
     const userAgents = {
-      chromium: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      chromium:
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       firefox: 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
-      webkit: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+      webkit:
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
     };
 
     return userAgents[this.options.config.type];
@@ -219,30 +223,30 @@ export class BrowserManager {
   // Utility methods for common browser operations
   async waitForNetworkIdle(page: Page, timeout = 30000): Promise<void> {
     const { observability } = this.options;
-    
-    return observability.tracer.wrapAsync('browser_wait_network_idle', async (span) => {
+
+    return observability.tracer.wrapAsync('browser_wait_network_idle', async span => {
       await page.waitForLoadState('networkidle', { timeout });
-      
+
       span.setAttributes({
         'network.idle': true,
-        'timeout': timeout,
+        timeout: timeout,
       });
     });
   }
 
   async takeScreenshot(page: Page, path?: string): Promise<Buffer> {
     const { observability } = this.options;
-    
-    return observability.tracer.wrapAsync('browser_screenshot', async (span) => {
+
+    return observability.tracer.wrapAsync('browser_screenshot', async span => {
       const screenshotOptions: any = {
         fullPage: true,
         type: 'png',
       };
-      
+
       if (path) {
         screenshotOptions.path = path;
       }
-      
+
       const screenshot = await page.screenshot(screenshotOptions);
 
       span.setAttributes({
