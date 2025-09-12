@@ -1,0 +1,120 @@
+# OpenTelemetry Collector Configuration
+# Routes observability data to both Elastic Cloud and Grafana Cloud
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  memory_limiter:
+    limit_mib: 256
+
+  resource:
+    attributes:
+      - key: service.name
+        value: hospital-scraper
+        action: upsert
+      - key: service.version  
+        value: "1.0.0"
+        action: upsert
+      - key: deployment.environment
+        from_attribute: environment
+        action: upsert
+
+exporters:
+  # Elasticsearch Cloud APM
+  otlp/elastic:
+    endpoint: ${env:ELASTICSEARCH_CLOUD_URL}
+    headers:
+      authorization: "ApiKey ${env:ELASTICSEARCH_API_KEY}"
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # Grafana Cloud - Traces (Tempo)
+  otlp/tempo:
+    endpoint: ${env:GRAFANA_CLOUD_TEMPO_URL}
+    headers:
+      authorization: "Basic ${env:GRAFANA_CLOUD_USER_ID}:${env:GRAFANA_CLOUD_API_KEY}"
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # Grafana Cloud - Metrics (Prometheus)
+  prometheusremotewrite:
+    endpoint: ${env:GRAFANA_CLOUD_PROMETHEUS_URL}
+    headers:
+      authorization: "Basic ${env:GRAFANA_CLOUD_USER_ID}:${env:GRAFANA_CLOUD_API_KEY}"
+    resource_to_telemetry_conversion:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # Grafana Cloud - Logs (Loki)
+  loki:
+    endpoint: ${env:GRAFANA_CLOUD_LOKI_URL}
+    headers:
+      authorization: "Basic ${env:GRAFANA_CLOUD_USER_ID}:${env:GRAFANA_CLOUD_API_KEY}"
+    format: json
+    labels:
+      attributes:
+        service.name: "service_name"
+        service.version: "service_version"
+        log.level: "level"
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # Debug logging (optional)
+  logging:
+    loglevel: info
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    # Traces pipeline - dual export to Elastic and Grafana
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/elastic, otlp/tempo]
+
+    # Metrics pipeline - dual export to Elastic and Grafana  
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/elastic, prometheusremotewrite]
+
+    # Logs pipeline - dual export to Elastic and Grafana
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/elastic, loki]
+
+  extensions: []
+
+  telemetry:
+    logs:
+      level: "info"
+    metrics:
+      address: 0.0.0.0:8889
