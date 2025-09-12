@@ -451,26 +451,77 @@ The application tracks:
 
 ```typescript
 interface HospitalMetric {
-  id: string;                    // UUID
-  timestamp: Date;               // Data collection time
-  waitTimeMinutes: number;       // Current wait time
-  totalPatients?: number;        // Total patients waiting
-  ambulancePatients?: number;    // Ambulance arrivals
-  emergencyCases?: number;       // Emergency cases
-  updateDelayMinutes?: number;   // Data freshness indicator
-  scrapingSuccess: boolean;      // Scraping success flag
-  sourceUrl: string;             // Source website URL
+  id: string;                    // UUID - Unique identifier for this record
+  timestamp: Date;               // When our scraper collected this data
+  waitTimeMinutes: number;       // Current ER wait time (0-480 min)
+  totalPatients?: number;        // Patients in treatment or waiting (0-200)
+  ambulancePatients?: number;    // Patients who arrived by ambulance (0-200)
+  emergencyCases?: number;       // Life-threatening emergency cases (0-50)
+  updateDelayMinutes?: number;   // Hospital data freshness (see details below)
+  scrapingSuccess: boolean;      // Whether scraping succeeded
+  sourceUrl: string;             // Vivantes ER website URL
   metadata: {
-    scraperId: string;           // Scraper instance ID
+    scraperId: string;           // Scraper instance identifier
     version: string;             // Application version
-    processingTimeMs: number;    // Scraping duration
-    browserType?: string;        // Browser used
-    userAgent?: string;          // User agent string
-    screenResolution?: string;   // Browser resolution
-    errorMessage?: string;       // Error details if failed
+    processingTimeMs: number;    // Time taken to scrape (milliseconds)
+    browserType?: string;        // Browser engine used (chromium/firefox/webkit)
+    userAgent?: string;          // Browser user agent string
+    screenResolution?: string;   // Browser viewport resolution
+    errorMessage?: string;       // Error details if scraping failed
   };
 }
 ```
+
+#### 📊 **Data Field Details**
+
+| Field | Description | Example | Range/Format |
+|-------|-------------|---------|-------------|
+| `waitTimeMinutes` | Current emergency room wait time | `56` | 0-480 minutes |
+| `totalPatients` | Patients in treatment or waiting | `33` | 0-200 patients |
+| `ambulancePatients` | Patients who arrived by ambulance | `13` | 0-200 patients |
+| `emergencyCases` | Life-threatening emergency cases | `1` | 0-50 cases |
+| `updateDelayMinutes` | **Data freshness indicator** | `14` | 0-1440 minutes |
+
+#### 🕒 **Understanding `updateDelayMinutes`**
+
+This critical field indicates **how stale the hospital's data is** when we scrape it:
+
+**What it represents:**
+- Time elapsed since the hospital last updated their emergency room status
+- Extracted from German text: *"zuletzt aktualisiert vor 14 min"* → `updateDelayMinutes: 14`
+
+**Data Quality Implications:**
+- **0-5 minutes**: Fresh data, highly reliable
+- **6-15 minutes**: Recent data, good for decision making  
+- **16-30 minutes**: Moderately stale, use with caution
+- **31+ minutes**: Potentially outdated, consider data reliability
+
+**Use Cases:**
+- **Alerting**: Trigger alerts when data becomes too stale (>30 min)
+- **Data Quality**: Filter out records with high delay for analysis
+- **Reliability Scoring**: Weight data by freshness in AI models
+- **Hospital Monitoring**: Track how frequently hospitals update their status
+
+**Technical Details:**
+```typescript
+// Extraction patterns used:
+const patterns = [
+  /vor\s*(\d+)\s*min/i,                    // "vor 14 min"
+  /zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i,  // "zuletzt aktualisiert vor 14 min"
+  /(\d+)\s*min.*ago/i,                     // "14 min ago" (English fallback)
+  /updated\s*(\d+)\s*min/i                 // "updated 14 min" (English fallback)
+];
+
+// Example extraction:
+// Input: "zuletzt aktualisiert vor 14 min"
+// Output: updateDelayMinutes = 14
+```
+
+**Monitoring Recommendations:**
+- Set up alerts when `updateDelayMinutes > 30`
+- Track average update delays over time
+- Use for data quality dashboards
+- Factor into wait time prediction models
 
 ### Data Storage
 
@@ -494,14 +545,14 @@ interface HospitalMetric {
 '.wazimo__ambulance .fact'       // "13 Patient*innen kamen mit dem Rettungswagen"  
 '.wazimo__emergencies .fact'     // "1 Lebensbedrohliche Notfälle"
 
-// Last Updated
-'.wazimo__age'                   // "zuletzt aktualisiert vor 14 min"
+// Data Freshness (Update Delay)
+'.wazimo__age'                   // "zuletzt aktualisiert vor 14 min" → updateDelayMinutes: 14
 ```
 
 **Data Extraction Logic**:
 - **Priority-Based Extraction**: Specific selectors checked first, fallback to keyword matching
-- **German Language Support**: Keywords include `behandlung`, `warten`, `rettungswagen`
-- **Pattern Matching**: `/zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i`
+- **German Language Support**: Keywords include `behandlung`, `warten`, `rettungswagen`, `lebensbedrohlich`, `notfall`
+- **Update Delay Patterns**: `/zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i` and `/vor\s*(\d+)\s*min/i`
 - **Data Validation**: 
   - Wait times: 0-480 minutes (8 hours max)
   - Patient counts: 0-200 patients (sanity checks)

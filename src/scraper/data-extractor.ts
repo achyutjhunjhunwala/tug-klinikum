@@ -467,13 +467,32 @@ export class DataExtractor {
     return undefined;
   }
 
+  /**
+   * Extracts the data freshness indicator from hospital website
+   * 
+   * This method parses German text patterns to determine how long ago
+   * the hospital last updated their emergency room status.
+   * 
+   * @param data Raw scraped data from the website
+   * @returns Number of minutes since hospital's last data update, or undefined if not found
+   * 
+   * @example
+   * // German text: "zuletzt aktualisiert vor 14 min"
+   * // Returns: 14
+   * 
+   * // German text: "vor 5 min"  
+   * // Returns: 5
+   * 
+   * // English fallback: "updated 20 min ago"
+   * // Returns: 20
+   */
   private extractUpdateDelay(data: Record<string, any>): number | undefined {
-    // Look for "vor X min" or similar patterns - Updated for Vivantes format
+    // Regex patterns for extracting update delay in multiple languages
     const patterns = [
-      /vor\s*(\d+)\s*min/i,
-      /zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i,
-      /(\d+)\s*min.*ago/i,
-      /updated\s*(\d+)\s*min/i
+      /vor\s*(\d+)\s*min/i,                           // "vor 14 min"
+      /zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i, // "zuletzt aktualisiert vor 14 min" (primary)
+      /(\d+)\s*min.*ago/i,                            // "14 min ago" (English fallback)
+      /updated\s*(\d+)\s*min/i                        // "updated 14 min" (English fallback)
     ];
 
     for (const [key, value] of Object.entries(data)) {
@@ -483,10 +502,12 @@ export class DataExtractor {
           if (match && match[1]) {
             const delay = parseInt(match[1], 10);
 
-            this.observability.logger.debug('Update delay extracted', {
+            this.observability.logger.debug('Hospital data freshness extracted', {
               source: key,
-              value,
-              extractedDelay: delay,
+              originalText: value,
+              extractedDelayMinutes: delay,
+              patternUsed: pattern.source,
+              dataFreshness: delay <= 5 ? 'very fresh' : delay <= 15 ? 'fresh' : delay <= 30 ? 'moderate' : 'stale'
             });
 
             return delay;
