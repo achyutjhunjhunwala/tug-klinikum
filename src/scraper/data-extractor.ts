@@ -169,17 +169,17 @@ export class DataExtractor {
     return this.observability.tracer.wrapAsync('scrape_page_data', async span => {
       const data: Record<string, any> = {};
 
-      // Extract wait time information
+      // Extract wait time information - Updated for Vivantes website structure
       const waitTimeSelectors = [
-        '[class*="wait"][class*="time"]',
-        '[id*="wait"][id*="time"]',
+        '.wazimo__waittime',
+        '.wazimo__waittime .fact',
+        '.wazimo--box.wazimo__waittime',
+        '[class*="wazimo"] .fact',
         '.wartezeitAnzeige',
         '.wartezeit',
         '.wait-time',
-        '.emergency-wait',
         'span:has-text("min")',
         'div:has-text("Wartezeit")',
-        'div:has-text("min")',
       ];
 
       for (const selector of waitTimeSelectors) {
@@ -196,13 +196,15 @@ export class DataExtractor {
         }
       }
 
-      // Extract patient count information
+      // Extract patient count information - Updated for Vivantes website structure
       const patientSelectors = [
+        '.wazimo__waiting',
+        '.wazimo__waiting .fact',
+        '.wazimo__ambulance',
+        '.wazimo__ambulance .fact',
+        '.wazimo--box .fact',
         '[class*="patient"]',
         '[class*="anzahl"]',
-        '[id*="patient"]',
-        '.patient-count',
-        '.emergency-count',
         'span:has-text("Patient")',
         'div:has-text("Patienten")',
       ];
@@ -221,14 +223,17 @@ export class DataExtractor {
         }
       }
 
-      // Extract update time information
+      // Extract update time information - Updated for Vivantes website structure
       const updateSelectors = [
+        '.wazimo__age',
+        '.wazimo__age b',
+        '[class*="age"]',
         '[class*="update"]',
         '[class*="aktuell"]',
-        '[id*="update"]',
         '.last-updated',
         '.timestamp',
         'span:has-text("aktualisiert")',
+        'span:has-text("zuletzt")',
         'div:has-text("vor")',
         'time',
       ];
@@ -345,13 +350,20 @@ export class DataExtractor {
     type: 'total' | 'ambulance' | 'emergency'
   ): number | undefined {
     const keywords = {
-      total: ['patient', 'gesamt', 'total', 'anzahl'],
-      ambulance: ['rettung', 'ambulance', 'krankenwagen', 'rtw'],
+      total: [
+        'patient', 'gesamt', 'total', 'anzahl', 'behandlung', 'warten', 
+        'wazimo__waiting', 'waiting'
+      ],
+      ambulance: [
+        'rettung', 'ambulance', 'krankenwagen', 'rtw', 'rettungswagen',
+        'wazimo__ambulance', 'kamen mit dem'
+      ],
       emergency: ['notfall', 'emergency', 'dringend', 'urgent'],
     };
 
     const searchKeywords = keywords[type];
 
+    // First, try to find data from specific Vivantes selectors
     for (const [key, value] of Object.entries(data)) {
       if (typeof value === 'string') {
         const lowerValue = value.toLowerCase();
@@ -363,6 +375,8 @@ export class DataExtractor {
         );
 
         if (isRelevant) {
+          // Handle Vivantes specific format: "33 Patient*innen sind in Behandlung oder warten"
+          // or "13 Patient*innen kamen mit dem Rettungswagen"
           const match = value.match(/(\d+)/);
           if (match && match[1]) {
             const count = parseInt(match[1], 10);
@@ -384,8 +398,13 @@ export class DataExtractor {
   }
 
   private extractUpdateDelay(data: Record<string, any>): number | undefined {
-    // Look for "vor X min" or similar patterns
-    const patterns = [/vor\s*(\d+)\s*min/i, /(\d+)\s*min.*ago/i, /updated\s*(\d+)\s*min/i];
+    // Look for "vor X min" or similar patterns - Updated for Vivantes format
+    const patterns = [
+      /vor\s*(\d+)\s*min/i,
+      /zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i,
+      /(\d+)\s*min.*ago/i,
+      /updated\s*(\d+)\s*min/i
+    ];
 
     for (const [key, value] of Object.entries(data)) {
       if (typeof value === 'string') {

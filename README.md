@@ -480,6 +480,30 @@ interface HospitalMetric {
 - **Retention**: Configurable (default: 1 year)
 - **Rollover**: Monthly index rotation
 
+### Web Scraping Configuration
+
+**Target Website**: [Vivantes Friedrichshain Emergency Room](https://www.vivantes.de/klinikum-im-friedrichshain/rettungsstelle)
+
+**Key Selectors** (Updated September 2025):
+```typescript
+// Wait Time Data
+'.wazimo__waittime .fact'        // "56 min"
+
+// Patient Counts  
+'.wazimo__waiting .fact'         // "33 Patient*innen sind in Behandlung"
+'.wazimo__ambulance .fact'       // "13 Patient*innen kamen mit Rettungswagen"
+
+// Last Updated
+'.wazimo__age'                   // "zuletzt aktualisiert vor 14 min"
+```
+
+**Data Extraction Logic**:
+- **German Language Support**: Keywords include `behandlung`, `warten`, `rettungswagen`
+- **Pattern Matching**: `/zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i`
+- **Fallback Selectors**: Generic selectors for robustness
+
+> **Note**: Selectors are specific to Vivantes website structure. If scraping fails, check for website layout changes and update selectors accordingly.
+
 ## 🔌 API Endpoints
 
 ### Health Endpoints
