@@ -46,18 +46,24 @@ export function createScrapingConfig(): ScrapingConfig {
               height: parseInt(process.env['VIEWPORT_HEIGHT'], 10),
             }
           : undefined,
-      proxy: process.env['PROXY_SERVER']
-        ? {
-            server: process.env['PROXY_SERVER'],
-            username: process.env['PROXY_USERNAME'],
-            password: process.env['PROXY_PASSWORD'],
-          }
-        : undefined,
+      proxy: (() => {
+        const server = process.env['PROXY_SERVER'];
+        if (!server) return undefined;
+        
+        const proxyConfig: { server: string; username?: string; password?: string } = { server };
+        const username = process.env['PROXY_USERNAME'];
+        const password = process.env['PROXY_PASSWORD'];
+        
+        if (username) proxyConfig.username = username;
+        if (password) proxyConfig.password = password;
+        
+        return proxyConfig;
+      })(),
     },
     maxRetries: parseInt(process.env['MAX_RETRIES'] || '3', 10),
     pageTimeout: parseInt(process.env['PAGE_TIMEOUT'] || '30000', 10),
     scraperId: process.env['SCRAPER_ID'] || `hospital-scraper-${process.pid}`,
   });
 
-  return config;
+  return config as ScrapingConfig;
 }

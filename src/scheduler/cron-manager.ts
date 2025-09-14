@@ -64,7 +64,12 @@ export class CronManager {
       const wrappedHandler = this.createWrappedHandler(config.name, handler, status);
 
       // Schedule the task
-      const scheduleOptions: any = {
+      interface ScheduleOptions {
+        scheduled: boolean;
+        timezone?: string;
+      }
+
+      const scheduleOptions: ScheduleOptions = {
         scheduled: config.enabled !== false,
       };
       if (config.timezone) {

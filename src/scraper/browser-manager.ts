@@ -1,4 +1,4 @@
-import { Browser, BrowserContext, Page, chromium, firefox, webkit } from 'playwright';
+import { Browser, BrowserContext, Page, chromium, firefox, webkit, LaunchOptions } from 'playwright';
 import { ObservabilityProvider } from '@/observability';
 
 export type BrowserType = 'chromium' | 'firefox' | 'webkit';
@@ -17,8 +17,8 @@ export interface BrowserConfig {
   proxy?:
     | {
         server: string;
-        username?: string | undefined;
-        password?: string | undefined;
+        username?: string;
+        password?: string;
       }
     | undefined;
 }
@@ -173,7 +173,7 @@ export class BrowserManager {
   }
 
   private async launchBrowser(config: BrowserConfig): Promise<Browser> {
-    const launchOptions: any = {
+    const launchOptions: LaunchOptions = {
       headless: config.headless,
       timeout: config.timeout,
     };
@@ -183,12 +183,12 @@ export class BrowserManager {
     }
 
     switch (config.type) {
-      case 'chromium':
+      case 'chromium': {
         // Use system Chromium in production or when PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set
-        const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'] || undefined;
-        return chromium.launch({
+        const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'];
+        const chromiumOptions = {
           ...launchOptions,
-          executablePath,
+          ...(executablePath && { executablePath }),
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -198,13 +198,17 @@ export class BrowserManager {
             '--no-zygote',
             '--disable-gpu',
           ],
-        });
+        };
+        return chromium.launch(chromiumOptions);
+      }
 
-      case 'firefox':
+      case 'firefox': {
         return firefox.launch(launchOptions);
+      }
 
-      case 'webkit':
+      case 'webkit': {
         return webkit.launch(launchOptions);
+      }
 
       default:
         throw new Error(`Unsupported browser type: ${config.type}`);
@@ -241,7 +245,13 @@ export class BrowserManager {
     const { observability } = this.options;
 
     return observability.tracer.wrapAsync('browser_screenshot', async span => {
-      const screenshotOptions: any = {
+      interface ScreenshotOptions {
+        fullPage: boolean;
+        type: 'png' | 'jpeg';
+        path?: string;
+      }
+
+      const screenshotOptions: ScreenshotOptions = {
         fullPage: true,
         type: 'png',
       };

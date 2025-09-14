@@ -1,0 +1,322 @@
+name: PR Quality Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  # Check if we should run the workflow
+  check-permissions:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+      pr-number: ${{ steps.check.outputs.pr-number }}
+    steps:
+      - name: Check permissions and trigger
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = 'achyutjhunjhunwala';
+            
+            // If it's a pull request event
+            if (context.eventName === 'pull_request') {
+              const prAuthor = context.payload.pull_request.user.login;
+              console.log(`PR author: ${prAuthor}`);
+              
+              if (prAuthor === owner) {
+                console.log('PR created by owner - running checks');
+                core.setOutput('should-run', 'true');
+                core.setOutput('pr-number', context.payload.pull_request.number);
+                return;
+              } else {
+                console.log('PR created by external contributor - checks require owner approval');
+                core.setOutput('should-run', 'false');
+                return;
+              }
+            }
+            
+            // If it's a comment event
+            if (context.eventName === 'issue_comment') {
+              const commentAuthor = context.payload.comment.user.login;
+              const commentBody = context.payload.comment.body.trim();
+              
+              console.log(`Comment author: ${commentAuthor}`);
+              console.log(`Comment body: ${commentBody}`);
+              
+              // Check if comment is from owner and contains trigger command
+              if (commentAuthor === owner && 
+                  (commentBody === '/run-checks' || commentBody === '/check')) {
+                
+                // Verify this is on a pull request
+                if (context.payload.issue.pull_request) {
+                  console.log('Owner triggered checks on PR - running');
+                  core.setOutput('should-run', 'true');
+                  core.setOutput('pr-number', context.payload.issue.number);
+                  return;
+                } else {
+                  console.log('Comment not on a PR - ignoring');
+                  core.setOutput('should-run', 'false');
+                  return;
+                }
+              } else {
+                console.log('Comment not from owner or invalid command - ignoring');
+                core.setOutput('should-run', 'false');
+                return;
+              }
+            }
+            
+            core.setOutput('should-run', 'false');
+
+  # Main quality checks job
+  quality-checks:
+    runs-on: ubuntu-latest
+    needs: check-permissions
+    if: needs.check-permissions.outputs.should-run == 'true'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # For PR comments, we need to checkout the PR branch
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/merge', needs.check-permissions.outputs.pr-number) || github.head_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        id: eslint
+        continue-on-error: true
+        run: |
+          echo "## 🔍 ESLint Results" >> $GITHUB_STEP_SUMMARY
+          if npm run lint 2>&1 | tee eslint-output.txt; then
+            echo "✅ ESLint passed" >> $GITHUB_STEP_SUMMARY
+            echo "eslint-status=✅ Passed" >> $GITHUB_OUTPUT
+            echo "eslint-failed=false" >> $GITHUB_OUTPUT
+          else
+            echo "❌ ESLint failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat eslint-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "eslint-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "eslint-failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Check Prettier formatting
+        id: prettier
+        continue-on-error: true
+        run: |
+          echo "## 💅 Prettier Results" >> $GITHUB_STEP_SUMMARY
+          if npm run format:check 2>&1 | tee prettier-output.txt; then
+            echo "✅ Code is properly formatted" >> $GITHUB_STEP_SUMMARY
+            echo "prettier-status=✅ Passed" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Code formatting issues found" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat prettier-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "prettier-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "prettier-failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "prettier-failed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run TypeScript check
+        id: typescript
+        continue-on-error: true
+        run: |
+          echo "## 🔧 TypeScript Results" >> $GITHUB_STEP_SUMMARY
+          if npx tsc --noEmit 2>&1 | tee typescript-output.txt; then
+            echo "✅ TypeScript compilation successful" >> $GITHUB_STEP_SUMMARY
+            echo "typescript-status=✅ Passed" >> $GITHUB_OUTPUT
+          else
+            echo "❌ TypeScript compilation errors" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat typescript-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "typescript-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "typescript-failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "typescript-failed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests (if available)
+        id: tests
+        continue-on-error: true
+        run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          if npm test 2>&1 | tee test-output.txt; then
+            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "test-status=✅ Passed" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat test-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "test-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "test-failed=true" >> $GITHUB_OUTPUT
+          else
+            echo "test-failed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build check
+        id: build
+        continue-on-error: true
+        run: |
+          echo "## 🏗️ Build Results" >> $GITHUB_STEP_SUMMARY
+          if npm run build 2>&1 | tee build-output.txt; then
+            echo "✅ Build successful" >> $GITHUB_STEP_SUMMARY
+            echo "build-status=✅ Passed" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Build failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat build-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "build-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "build-failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "build-failed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR with results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = ${{ needs.check-permissions.outputs.pr-number }};
+            const eslintStatus = '${{ steps.eslint.outputs.eslint-status }}' || '⏭️ Skipped';
+            const prettierStatus = '${{ steps.prettier.outputs.prettier-status }}' || '⏭️ Skipped';
+            const typescriptStatus = '${{ steps.typescript.outputs.typescript-status }}' || '⏭️ Skipped';
+            const testStatus = '${{ steps.tests.outputs.test-status }}' || '⏭️ Skipped';
+            const buildStatus = '${{ steps.build.outputs.build-status }}' || '⏭️ Skipped';
+            
+            const allPassed = [eslintStatus, prettierStatus, typescriptStatus, buildStatus]
+              .every(status => status.includes('✅'));
+            
+            const overallStatus = allPassed ? '🎉 Ready to merge!' : '⚠️ Issues found';
+            
+            const comment = `## 🔍 PR Quality Check Results
+            
+            ${overallStatus}
+            
+            | Check | Status |
+            |-------|--------|
+            | ESLint | ${eslintStatus} |
+            | Prettier | ${prettierStatus} |
+            | TypeScript | ${typescriptStatus} |
+            | Tests | ${testStatus} |
+            | Build | ${buildStatus} |
+            
+            ${allPassed ? 
+              '✅ **All checks passed!** This PR is ready for review and merge.' : 
+              '❌ **Some checks failed.** Please review the issues above and fix them before merging.'
+            }
+            
+            ---
+            *Quality checks triggered by @${{ github.actor }} • [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: comment
+            });
+
+      - name: Fail job if any check failed
+        if: always()
+        run: |
+          FAILED_CHECKS=""
+          
+          if [[ "${{ steps.eslint.outputs.eslint-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS ESLint"
+          fi
+          
+          if [[ "${{ steps.prettier.outputs.prettier-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS Prettier"
+          fi
+          
+          if [[ "${{ steps.typescript.outputs.typescript-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS TypeScript"
+          fi
+          
+          if [[ "${{ steps.tests.outputs.test-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS Tests"
+          fi
+          
+          if [[ "${{ steps.build.outputs.build-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS Build"
+          fi
+          
+          if [[ -n "$FAILED_CHECKS" ]]; then
+            echo "❌ Quality checks failed:$FAILED_CHECKS"
+            echo "This PR cannot be merged until all issues are resolved."
+            exit 1
+          else
+            echo "✅ All quality checks passed!"
+          fi
+
+  # Instruction comment for external contributors
+  post-instruction:
+    runs-on: ubuntu-latest
+    needs: check-permissions
+    if: needs.check-permissions.outputs.should-run == 'false' && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Post instructions for external PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prAuthor = context.payload.pull_request.user.login;
+            
+            const comment = `## 🔍 Quality Checks Required
+            
+            Hi @${prAuthor}! Thanks for your contribution! 
+            
+            For security reasons, quality checks on external PRs require manual approval from the repository owner.
+            
+            **@achyutjhunjhunwala** can trigger the checks by commenting:
+            - \`/run-checks\` or \`/check\`
+            
+            The checks will run:
+            - 🔍 ESLint
+            - 💅 Prettier formatting  
+            - 🔧 TypeScript compilation
+            - 🧪 Tests
+            - 🏗️ Build verification
+            
+            Please ensure your code follows the project's standards before requesting a review.
+            
+            ---
+            *This is an automated message to protect against malicious code execution.*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: comment
+            });

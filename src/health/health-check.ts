@@ -25,7 +25,7 @@ export interface ComponentHealth {
   responseTime: number;
   lastCheck: Date;
   error?: string | undefined;
-  details?: Record<string, any> | undefined;
+  details?: Record<string, unknown> | undefined;
 }
 
 export class HealthChecker {

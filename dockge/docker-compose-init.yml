@@ -1,0 +1,253 @@
+version: '3.8'
+
+services:
+  # Config initializer - creates config files at runtime
+  config-init:
+    image: alpine:latest
+    container_name: hospital-scraper-config-init
+    volumes:
+      - hospital-configs:/configs
+    environment:
+      - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - ELASTICSEARCH_APM_URL=${ELASTICSEARCH_APM_URL}
+    command: |
+      sh -c '
+      echo "Processing API key for Filebeat..." &&
+      DECODED_API_KEY=$$(echo "$${ELASTICSEARCH_API_KEY}" | base64 -d 2>/dev/null || echo "$${ELASTICSEARCH_API_KEY}") &&
+      echo "API key processed successfully" &&
+      echo "Creating OTEL config..." &&
+      cat > /configs/otel.yaml << EOF
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+      processors:
+        memory_limiter:
+          check_interval: 1s
+          limit_mib: 512
+        resource:
+          attributes:
+            - key: service.name
+              from_attribute: service.name
+              action: upsert
+            - key: service.version
+              from_attribute: service.version
+              action: upsert
+            - key: deployment.environment
+              from_attribute: environment
+              action: upsert
+        batch:
+          timeout: 1s
+          send_batch_size: 1024
+          send_batch_max_size: 2048
+
+      exporters:
+        otlp/elastic:
+          endpoint: $${ELASTICSEARCH_APM_URL}
+          headers:
+            authorization: "ApiKey $${ELASTICSEARCH_API_KEY}"
+          compression: gzip
+          retry_on_failure:
+            enabled: true
+            initial_interval: 5s
+            max_interval: 30s
+            max_elapsed_time: 300s
+        elasticsearch:
+          endpoints:
+            - $${ELASTICSEARCH_CLOUD_URL}
+          api_key: $${ELASTICSEARCH_API_KEY}
+          logs_index: "hospital-scraper-logs"
+          tls:
+            insecure: false
+        debug:
+          verbosity: basic
+          sampling_initial: 5
+          sampling_thereafter: 200
+
+      service:
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, resource, batch]
+            exporters: [otlp/elastic, debug]
+          metrics:
+            receivers: [otlp]
+            processors: [memory_limiter, resource, batch]
+            exporters: [otlp/elastic, debug]
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, resource, batch]
+            exporters: [elasticsearch, debug]
+        telemetry:
+          logs:
+            level: "info"
+      EOF
+
+      echo "Creating Filebeat config..." &&
+      cat > /configs/filebeat.yml << EOF
+      filebeat.inputs:
+      - type: log
+        paths:
+          - /app/logs/*.log
+        json.keys_under_root: true
+        json.add_error_key: true
+        processors:
+          - timestamp:
+              field: "@timestamp"
+              layouts:
+                - "2006-01-02T15:04:05.000Z"
+
+      output.elasticsearch:
+        hosts: 
+          - "$${ELASTICSEARCH_CLOUD_URL}"
+        api_key: "$${DECODED_API_KEY}"
+        
+      setup.template.enabled: false
+      setup.ilm.enabled: false
+
+      logging.level: info
+      logging.to_files: true
+      logging.files:
+        path: /var/log/filebeat
+        name: filebeat
+        keepfiles: 7
+        permissions: 0644
+
+      monitoring.enabled: false
+      EOF
+
+      echo "Config files created successfully!"
+      ls -la /configs/
+      '
+    restart: "no"
+    labels:
+      - "com.dockge.name=Config Initializer"
+      - "com.dockge.description=Creates configuration files at startup"
+
+  # OTEL Collector for Traces and Metrics
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: hospital-scraper-otel
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - hospital-configs:/etc:ro
+    ports:
+      - "${OTEL_GRPC_PORT:-4317}:4317"   # OTLP gRPC receiver
+      - "${OTEL_HTTP_PORT:-4318}:4318"   # OTLP HTTP receiver  
+      - "${METRICS_PORT:-8889}:8889"     # Prometheus metrics
+    environment:
+      - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - ELASTICSEARCH_APM_URL=${ELASTICSEARCH_APM_URL}
+    restart: unless-stopped
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+    networks:
+      - hospital-network
+    labels:
+      - "com.dockge.name=Hospital Scraper OTEL"
+      - "com.dockge.description=OpenTelemetry Collector for metrics and traces"
+
+  # Filebeat for Log Collection
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: hospital-scraper-filebeat
+    user: root
+    volumes:
+      - hospital-configs:/usr/share/filebeat/configs:ro
+      - hospital-logs:/app/logs:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: filebeat -e -c /usr/share/filebeat/configs/filebeat.yml
+    environment:
+      - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+    restart: unless-stopped
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    networks:
+      - hospital-network
+    labels:
+      - "com.dockge.name=Hospital Scraper Filebeat"
+      - "com.dockge.description=Log collection and forwarding to Elasticsearch"
+
+  # Hospital Scraper Application  
+  hospital-scraper:
+    image: ghcr.io/achyutjhunjhunwala/tug-klinikum:latest
+    container_name: hospital-scraper-app
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - hospital-logs:/app/logs
+      - hospital-screenshots:/app/screenshots
+    environment:
+      - NODE_ENV=production
+      - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - ELASTICSEARCH_APM_URL=${ELASTICSEARCH_APM_URL}
+      - ELASTICSEARCH_INDEX=${ELASTICSEARCH_INDEX:-hospital-metrics}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-hospital-scraper}
+      - OTEL_SERVICE_VERSION=${OTEL_SERVICE_VERSION:-1.0.0}
+      - OBSERVABILITY_PROVIDERS=elastic
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SCRAPING_INTERVAL=${SCRAPING_INTERVAL:-30}
+      - SCRAPING_TIMEZONE=${SCRAPING_TIMEZONE:-Europe/Berlin}
+      - OTEL_TRACE_SAMPLING=${OTEL_TRACE_SAMPLING:-1.0}
+      - OTEL_METRIC_INTERVAL=${OTEL_METRIC_INTERVAL:-30000}
+      - PROXY_SERVER=${PROXY_SERVER:-}
+      - PROXY_USERNAME=${PROXY_USERNAME:-}
+      - PROXY_PASSWORD=${PROXY_PASSWORD:-}
+    restart: unless-stopped
+    depends_on:
+      otel-collector:
+        condition: service_started
+      filebeat:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - hospital-network
+    labels:
+      - "com.dockge.name=Hospital Scraper App"
+      - "com.dockge.description=Main application for scraping hospital data"
+      - "com.dockge.url=http://localhost:${APP_PORT:-3000}/health"
+
+volumes:
+  hospital-logs:
+    driver: local
+    labels:
+      - "com.dockge.name=Hospital Logs"
+      - "com.dockge.description=Application and system logs"
+  
+  hospital-screenshots:
+    driver: local
+    labels:
+      - "com.dockge.name=Hospital Screenshots"
+      - "com.dockge.description=Browser screenshots for debugging"
+      
+  hospital-configs:
+    driver: local
+    labels:
+      - "com.dockge.name=Hospital Configs"
+      - "com.dockge.description=Runtime configuration files"
+
+networks:
+  hospital-network:
+    driver: bridge
+    labels:
+      - "com.dockge.name=Hospital Network"
+      - "com.dockge.description=Internal network for hospital scraper services"
