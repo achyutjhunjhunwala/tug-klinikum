@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read
 
     steps:
     - name: Checkout repository
@@ -54,11 +55,23 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Clean up old package versions
+    - name: Clean up old untagged versions first
       if: github.event_name != 'pull_request'
       uses: actions/delete-package-versions@v5
+      continue-on-error: true
       with:
-        package-name: ${{ github.repository }}
+        package-name: 'tug-klinikum'
+        package-type: 'container'
+        min-versions-to-keep: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+        delete-only-untagged-versions: true
+
+    - name: Clean up old tagged versions  
+      if: github.event_name != 'pull_request'
+      uses: actions/delete-package-versions@v5
+      continue-on-error: true
+      with:
+        package-name: 'tug-klinikum'
         package-type: 'container'
         min-versions-to-keep: 2
         token: ${{ secrets.GITHUB_TOKEN }}
