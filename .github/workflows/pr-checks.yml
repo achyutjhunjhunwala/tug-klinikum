@@ -103,21 +103,26 @@ jobs:
 
       - name: Run ESLint
         id: eslint
+        continue-on-error: true
         run: |
           echo "## 🔍 ESLint Results" >> $GITHUB_STEP_SUMMARY
           if npm run lint 2>&1 | tee eslint-output.txt; then
             echo "✅ ESLint passed" >> $GITHUB_STEP_SUMMARY
             echo "eslint-status=✅ Passed" >> $GITHUB_OUTPUT
+            echo "eslint-failed=false" >> $GITHUB_OUTPUT
           else
             echo "❌ ESLint failed" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             cat eslint-output.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "eslint-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "eslint-failed=true" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
       - name: Check Prettier formatting
         id: prettier
+        continue-on-error: true
         run: |
           echo "## 💅 Prettier Results" >> $GITHUB_STEP_SUMMARY
           if npm run format:check 2>&1 | tee prettier-output.txt; then
@@ -129,10 +134,15 @@ jobs:
             cat prettier-output.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "prettier-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "prettier-failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "prettier-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Run TypeScript check
         id: typescript
+        continue-on-error: true
         run: |
           echo "## 🔧 TypeScript Results" >> $GITHUB_STEP_SUMMARY
           if npx tsc --noEmit 2>&1 | tee typescript-output.txt; then
@@ -144,6 +154,10 @@ jobs:
             cat typescript-output.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "typescript-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "typescript-failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "typescript-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Run tests (if available)
@@ -160,10 +174,14 @@ jobs:
             cat test-output.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "test-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "test-failed=true" >> $GITHUB_OUTPUT
+          else
+            echo "test-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Build check
         id: build
+        continue-on-error: true
         run: |
           echo "## 🏗️ Build Results" >> $GITHUB_STEP_SUMMARY
           if npm run build 2>&1 | tee build-output.txt; then
@@ -175,6 +193,10 @@ jobs:
             cat build-output.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "build-status=❌ Failed" >> $GITHUB_OUTPUT
+            echo "build-failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "build-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Comment PR with results
@@ -220,6 +242,39 @@ jobs:
               issue_number: prNumber,
               body: comment
             });
+
+      - name: Fail job if any check failed
+        if: always()
+        run: |
+          FAILED_CHECKS=""
+          
+          if [[ "${{ steps.eslint.outputs.eslint-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS ESLint"
+          fi
+          
+          if [[ "${{ steps.prettier.outputs.prettier-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS Prettier"
+          fi
+          
+          if [[ "${{ steps.typescript.outputs.typescript-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS TypeScript"
+          fi
+          
+          if [[ "${{ steps.tests.outputs.test-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS Tests"
+          fi
+          
+          if [[ "${{ steps.build.outputs.build-failed }}" == "true" ]]; then
+            FAILED_CHECKS="$FAILED_CHECKS Build"
+          fi
+          
+          if [[ -n "$FAILED_CHECKS" ]]; then
+            echo "❌ Quality checks failed:$FAILED_CHECKS"
+            echo "This PR cannot be merged until all issues are resolved."
+            exit 1
+          else
+            echo "✅ All quality checks passed!"
+          fi
 
   # Instruction comment for external contributors
   post-instruction:

@@ -21,7 +21,7 @@ export interface DataExtractionResult {
   error?: string;
   processingTimeMs: number;
   elementsFound: string[];
-  rawData?: Record<string, any>;
+  rawData?: Record<string, unknown>;
 }
 
 export class DataExtractor {
@@ -165,9 +165,9 @@ export class DataExtractor {
     });
   }
 
-  private async scrapePageData(page: Page): Promise<Record<string, any>> {
+  private async scrapePageData(page: Page): Promise<Record<string, unknown>> {
     return this.observability.tracer.wrapAsync('scrape_page_data', async span => {
-      const data: Record<string, any> = {};
+      const data: Record<string, unknown> = {};
 
       // Extract wait time information - Updated for Vivantes website structure
       const waitTimeSelectors = [
@@ -283,7 +283,7 @@ export class DataExtractor {
     });
   }
 
-  private async parseScrapedData(rawData: Record<string, any>): Promise<ScrapedData> {
+  private async parseScrapedData(rawData: Record<string, unknown>): Promise<ScrapedData> {
     return this.observability.tracer.wrapAsync('parse_scraped_data', async span => {
       const result: Partial<ScrapedData> = {};
 
@@ -322,7 +322,7 @@ export class DataExtractor {
     });
   }
 
-  private extractWaitTime(data: Record<string, any>): number | null {
+  private extractWaitTime(data: Record<string, unknown>): number | null {
     // Look for wait time in various formats
     const patterns = [
       /(\d+)\s*min/i,
@@ -370,7 +370,7 @@ export class DataExtractor {
   }
 
   private extractPatientCount(
-    data: Record<string, any>,
+    data: Record<string, unknown>,
     type: 'total' | 'ambulance' | 'emergency'
   ): number | undefined {
     // Priority-based extraction - check most specific selectors first
@@ -486,7 +486,7 @@ export class DataExtractor {
    * // English fallback: "updated 20 min ago"
    * // Returns: 20
    */
-  private extractUpdateDelay(data: Record<string, any>): number | undefined {
+  private extractUpdateDelay(data: Record<string, unknown>): number | undefined {
     // Regex patterns for extracting update delay in multiple languages
     const patterns = [
       /vor\s*(\d+)\s*min/i,                           // "vor 14 min"

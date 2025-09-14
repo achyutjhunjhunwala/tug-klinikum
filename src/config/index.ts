@@ -84,7 +84,34 @@ export function validateRequiredEnvironmentVariables(): void {
 }
 
 // Configuration summary for logging
-export function getConfigurationSummary(): Record<string, any> {
+interface ConfigurationSummary {
+  application: {
+    environment: string;
+    scrapingInterval: string;
+    timezone: string;
+  };
+  database: {
+    type: string;
+    url: string;
+    indexName: string | undefined;
+    timeout: string;
+  };
+  scraping: {
+    targetUrl: string;
+    browserType: string;
+    headless: boolean;
+    maxRetries: number;
+  };
+  observability: {
+    serviceName: string;
+    serviceVersion: string;
+    providers: string[];
+    logLevel: string | undefined;
+    traceSampling: number | undefined;
+  };
+}
+
+export function getConfigurationSummary(): ConfigurationSummary {
   const configs = validateAllConfigurations();
 
   return {

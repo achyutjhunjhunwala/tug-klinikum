@@ -297,7 +297,13 @@ export class JobRunner {
     const successfulExecutions = this.executionHistory.filter(exec => exec.success).length;
     const successRate = totalExecutions > 0 ? successfulExecutions / totalExecutions : 0;
 
-    const status: any = {
+    const status: {
+      isRunning: boolean;
+      currentJobId?: string;
+      lastExecution?: JobExecutionResult;
+      totalExecutions: number;
+      successRate: number;
+    } = {
       isRunning: this.isRunning,
       totalExecutions,
       successRate,
@@ -308,7 +314,10 @@ export class JobRunner {
     }
 
     if (this.executionHistory.length > 0) {
-      status.lastExecution = this.executionHistory[this.executionHistory.length - 1];
+      const lastExecution = this.executionHistory[this.executionHistory.length - 1];
+      if (lastExecution) {
+        status.lastExecution = lastExecution;
+      }
     }
 
     return status;
