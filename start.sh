@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🚀 HOSPITAL SCRAPER - DEPLOYMENT"
-echo "================================="
+echo "🚀 HOSPITAL SCRAPER - PRODUCTION DEPLOYMENT"
+echo "==========================================="
 echo "Starting complete containerized stack..."
 echo ""
 
