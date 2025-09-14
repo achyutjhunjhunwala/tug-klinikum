@@ -97,6 +97,15 @@ class HospitalScraperApplication {
     await ObservabilityFactory.initializeProviders(this.observabilityProviders);
     
     console.log(`✅ Observability initialized (${this.observabilityProviders.length} providers)`);
+
+    // Emit a startup span and heartbeat metric to verify pipelines
+    const primaryObservability = this.observabilityProviders?.[0];
+    if (primaryObservability) {
+      await primaryObservability.tracer.wrapAsync('startup_telemetry_check', async () => {
+        primaryObservability.metrics.recordHeartbeat({ phase: 'post_init' });
+        primaryObservability.logger.info('Emitted startup heartbeat');
+      });
+    }
   }
 
   private async initializeDatabaseEarly(): Promise<void> {
@@ -232,7 +241,7 @@ class HospitalScraperApplication {
     
     primaryObservability.logger.info('Health checker initialized successfully', {
       status: initialHealth.status,
-      components: Object.keys(initialHealth.components),
+      component_names: Object.keys(initialHealth.components),
     });
   }
 

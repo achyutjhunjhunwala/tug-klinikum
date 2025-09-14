@@ -53,7 +53,7 @@ export function validateAllConfigurations(): {
         console.warn('Warning: Debug logging is enabled in production environment');
       }
 
-      if (!observability.elasticConfig && !observability.grafanaConfig) {
+      if (!observability.elasticConfig) {
         throw new Error('At least one observability provider must be configured in production');
       }
     }
@@ -67,31 +67,13 @@ export function validateAllConfigurations(): {
 
 // Environment validation
 export function validateRequiredEnvironmentVariables(): void {
-  const required = ['DB_TYPE', 'OTEL_SERVICE_NAME'];
-
-  const conditionalRequired = {
-    ELASTICSEARCH_CLOUD_URL: () => process.env['DB_TYPE'] === 'elasticsearch',
-    ELASTICSEARCH_API_KEY: () => process.env['DB_TYPE'] === 'elasticsearch',
-    POSTGRESQL_URL: () => process.env['DB_TYPE'] === 'postgresql',
-    GRAFANA_CLOUD_USER_ID: () => getObservabilityProviders().includes('grafana'),
-    GRAFANA_CLOUD_API_KEY: () => getObservabilityProviders().includes('grafana'),
-    GRAFANA_CLOUD_PROMETHEUS_URL: () => getObservabilityProviders().includes('grafana'),
-    GRAFANA_CLOUD_LOKI_URL: () => getObservabilityProviders().includes('grafana'),
-    GRAFANA_CLOUD_TEMPO_URL: () => getObservabilityProviders().includes('grafana'),
-  };
+  const required = ['ELASTICSEARCH_CLOUD_URL', 'ELASTICSEARCH_API_KEY', 'OTEL_SERVICE_NAME'];
 
   const missing: string[] = [];
 
   // Check required variables
   for (const varName of required) {
     if (!process.env[varName]) {
-      missing.push(varName);
-    }
-  }
-
-  // Check conditional variables
-  for (const [varName, condition] of Object.entries(conditionalRequired)) {
-    if (condition() && !process.env[varName]) {
       missing.push(varName);
     }
   }

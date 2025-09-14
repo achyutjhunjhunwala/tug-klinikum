@@ -223,7 +223,7 @@ export class JobRunner {
 
         this.observability.logger.info('Health check completed', {
           overall: overallHealthy,
-          components: healthResults,
+          component_status: healthResults,
         });
 
         return overallHealthy;

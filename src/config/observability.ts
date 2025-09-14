@@ -13,15 +13,6 @@ const ObservabilityConfigSchema = z.object({
       apiKey: z.string().min(1),
     })
     .optional(),
-  grafanaConfig: z
-    .object({
-      userId: z.string().min(1),
-      apiKey: z.string().min(1),
-      prometheusUrl: z.string().url(),
-      lokiUrl: z.string().url(),
-      tempoUrl: z.string().url(),
-    })
-    .optional(),
   traceSampling: z.number().min(0).max(1).default(1.0),
   metricInterval: z.number().int().min(1000).max(300000).default(30000),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -46,16 +37,6 @@ export function createObservabilityConfig(): ObservabilityConfig {
             apiKey: process.env['ELASTICSEARCH_API_KEY'],
           }
         : undefined,
-    grafanaConfig:
-      process.env['GRAFANA_CLOUD_USER_ID'] && process.env['GRAFANA_CLOUD_API_KEY']
-        ? {
-            userId: process.env['GRAFANA_CLOUD_USER_ID'],
-            apiKey: process.env['GRAFANA_CLOUD_API_KEY'],
-            prometheusUrl: process.env['GRAFANA_CLOUD_PROMETHEUS_URL']!,
-            lokiUrl: process.env['GRAFANA_CLOUD_LOKI_URL']!,
-            tempoUrl: process.env['GRAFANA_CLOUD_TEMPO_URL']!,
-          }
-        : undefined,
     traceSampling: parseFloat(process.env['OTEL_TRACE_SAMPLING'] || '1.0'),
     metricInterval: parseInt(process.env['OTEL_METRIC_INTERVAL'] || '30000', 10),
     logLevel: (process.env['LOG_LEVEL'] as 'debug' | 'info' | 'warn' | 'error') || 'info',
@@ -71,10 +52,10 @@ function deriveApmServerUrl(elasticsearchUrl: string): string {
   return elasticsearchUrl.replace(':9243', ':443').replace('.es.', '.apm.');
 }
 
-export function getObservabilityProviders(): Array<'elastic' | 'grafana'> {
-  const providers = process.env['OBSERVABILITY_PROVIDERS'] || 'elastic,grafana';
+export function getObservabilityProviders(): Array<'elastic'> {
+  const providers = process.env['OBSERVABILITY_PROVIDERS'] || 'elastic';
   return providers
     .split(',')
-    .map(p => p.trim() as 'elastic' | 'grafana')
-    .filter(p => ['elastic', 'grafana'].includes(p));
+    .map(p => p.trim() as 'elastic')
+    .filter(p => ['elastic'].includes(p));
 }

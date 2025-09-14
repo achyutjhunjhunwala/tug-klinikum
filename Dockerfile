@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install ALL dependencies (including devDependencies for build)
+RUN npm ci && npm cache clean --force
 
 # Copy source code
 COPY . .
@@ -38,12 +38,25 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Install Playwright browsers in production stage
-RUN npx playwright install --with-deps chromium firefox webkit
+# Install Playwright browser dependencies for Alpine Linux
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
 
-# Create necessary directories
+# Set Playwright to use system Chromium
+ENV PLAYWRIGHT_BROWSERS_PATH=0
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Create necessary directories and volumes
 RUN mkdir -p logs screenshots && \
     chown -R hospital-scraper:nodejs /app
+
+# Create volume mount point for logs
+VOLUME ["/app/logs"]
 
 # Switch to non-root user
 USER hospital-scraper
@@ -60,5 +73,5 @@ EXPOSE 3000
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
-CMD ["node", "dist/index.js"]
+# Start the application with module alias support
+CMD ["node", "-r", "module-alias/register", "dist/index.js"]

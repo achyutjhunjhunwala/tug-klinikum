@@ -1,109 +1,81 @@
-version: '3.8'
-
 services:
-  # Main application
-  hospital-scraper:
-    build: .
-    container_name: hospital-scraper-app
-    restart: unless-stopped
-    environment:
-      # Database Configuration
-      - DB_TYPE=elasticsearch
-      - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
-      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
-      - ELASTICSEARCH_INDEX=hospital-metrics
-      
-      # Grafana Cloud Configuration
-      - GRAFANA_CLOUD_USER_ID=${GRAFANA_CLOUD_USER_ID}
-      - GRAFANA_CLOUD_API_KEY=${GRAFANA_CLOUD_API_KEY}
-      - GRAFANA_CLOUD_PROMETHEUS_URL=${GRAFANA_CLOUD_PROMETHEUS_URL}
-      - GRAFANA_CLOUD_LOKI_URL=${GRAFANA_CLOUD_LOKI_URL}
-      - GRAFANA_CLOUD_TEMPO_URL=${GRAFANA_CLOUD_TEMPO_URL}
-      
-      # OTEL Configuration
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-      - OTEL_SERVICE_NAME=hospital-scraper
-      - OTEL_SERVICE_VERSION=1.0.0
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=hospital-scraper,service.version=1.0.0
-      
-      # Application Configuration
-      - NODE_ENV=production
-      - PORT=3000
-      - SCRAPING_INTERVAL=30
-      - TIMEZONE=Europe/Berlin
-      - LOG_LEVEL=info
-      
-      # Scraper Configuration
-      - TARGET_URL=https://www.vivantes.de/klinikum-im-friedrichshain/rettungsstelle
-      - BROWSER_TYPE=chromium
-      - HEADLESS=true
-      - BROWSER_TIMEOUT=30000
-      - MAX_RETRIES=3
-      
-      # Observability
-      - OBSERVABILITY_PROVIDERS=elastic,grafana
-    volumes:
-      - ./logs:/app/logs
-      - ./screenshots:/app/screenshots
-    ports:
-      - "3000:3000"
-    depends_on:
-      - otel-collector
-    networks:
-      - hospital-scraper-network
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  # OpenTelemetry Collector
+  # OTEL Collector for Traces and Metrics
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: hospital-scraper-otel
-    restart: unless-stopped
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./config/otel-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./config/otel.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
       - "8889:8889"   # Prometheus metrics
-    networks:
-      - hospital-scraper-network
     environment:
       - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
       - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
-      - GRAFANA_CLOUD_USER_ID=${GRAFANA_CLOUD_USER_ID}
-      - GRAFANA_CLOUD_API_KEY=${GRAFANA_CLOUD_API_KEY}
-      - GRAFANA_CLOUD_PROMETHEUS_URL=${GRAFANA_CLOUD_PROMETHEUS_URL}
-      - GRAFANA_CLOUD_LOKI_URL=${GRAFANA_CLOUD_LOKI_URL}
-      - GRAFANA_CLOUD_TEMPO_URL=${GRAFANA_CLOUD_TEMPO_URL}
-
-  # Local Grafana for development (optional)
-  grafana-local:
-    image: grafana/grafana:latest
-    container_name: hospital-scraper-grafana
+      - ELASTICSEARCH_APM_URL=${ELASTICSEARCH_APM_URL}
     restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
-      - ./config/grafana/provisioning:/etc/grafana/provisioning
     networks:
-      - hospital-scraper-network
-    profiles:
-      - dev
+      - hospital-network
+
+  # Filebeat for Log Collection
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: hospital-scraper-filebeat
+    user: root
+    volumes:
+      - /tmp/filebeat-runtime.yml:/usr/share/filebeat/filebeat.yml:ro
+      - hospital-logs:/app/logs:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+    networks:
+      - hospital-network
+
+  # Hospital Scraper Application
+  hospital-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: hospital-scraper-app
+    volumes:
+      - hospital-logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
+      - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
+      - ELASTICSEARCH_APM_URL=${ELASTICSEARCH_APM_URL}
+      - ELASTICSEARCH_INDEX=${ELASTICSEARCH_INDEX:-hospital-metrics}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-hospital-scraper}
+      - OTEL_SERVICE_VERSION=${OTEL_SERVICE_VERSION:-1.0.0}
+      - OBSERVABILITY_PROVIDERS=elastic
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SCRAPING_INTERVAL=${SCRAPING_INTERVAL:-30}
+      - SCRAPING_TIMEZONE=${SCRAPING_TIMEZONE:-Europe/Berlin}
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+      - filebeat
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - hospital-network
 
 volumes:
-  grafana-data:
+  hospital-logs:
     driver: local
 
 networks:
-  hospital-scraper-network:
+  hospital-network:
     driver: bridge

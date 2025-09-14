@@ -17,11 +17,13 @@ export interface ObservabilityMetrics {
   applicationUptime: Gauge;
   memoryUsage: Gauge;
   cpuUsage: Gauge;
+  heartbeat: Counter;
 
   recordDatabaseHealth(healthy: boolean): void;
   recordScrapingSuccess(scraperId: string, duration: number): void;
   recordScrapingFailure(scraperId: string, duration: number, reason: string): void;
   recordDatabaseOperation(operation: string, success: boolean, duration: number): void;
+  recordHeartbeat(attributes?: Record<string, string>): void;
 }
 
 export interface ObservabilityLogger {
@@ -88,13 +90,6 @@ export interface ObservabilityConfig {
     apiKey: string;
   } | undefined;
   
-  grafanaConfig?: {
-    userId: string;
-    apiKey: string;
-    prometheusUrl: string;
-    lokiUrl: string;
-    tempoUrl: string;
-  } | undefined;
   
   // Sampling and batching
   traceSampling?: number | undefined;

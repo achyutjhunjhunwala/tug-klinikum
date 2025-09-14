@@ -77,4 +77,4 @@ playwright/.cache/
 *.temp
 
 .serena
-.claude
+.claudeconfig/filebeat-runtime.yml

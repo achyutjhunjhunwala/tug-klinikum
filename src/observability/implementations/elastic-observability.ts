@@ -1,7 +1,8 @@
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { BaseObservabilityProvider } from './base-observability';
-import { ObservabilityConfig } from '@/observability/interfaces/observability-provider.interface';
+import { ObservabilityConfig, ObservabilityLogger } from '@/observability/interfaces/observability-provider.interface';
+import { PinoLogger } from '@/observability/otel/pino-logger';
 
 export class ElasticObservabilityProvider extends BaseObservabilityProvider {
   constructor(config: ObservabilityConfig) {
@@ -12,34 +13,40 @@ export class ElasticObservabilityProvider extends BaseObservabilityProvider {
     }
   }
 
+  protected override createLogger(): ObservabilityLogger {
+    // Use Pino for structured JSON logging (Filebeat will collect)
+    return new PinoLogger(
+      this.config.serviceName,
+      this.config.serviceVersion,
+      this.config.environment,
+      this.config.logLevel
+    );
+  }
+
   protected override createTraceExporter(): OTLPTraceExporter {
-    const { elasticConfig } = this.config;
-    
+    // Send to local OTEL collector
     return new OTLPTraceExporter({
-      url: `${elasticConfig!.apmServerUrl}/v1/traces`,
-      headers: {
-        'Authorization': `ApiKey ${elasticConfig!.apiKey}`,
-      },
+      url: this.config.otelEndpoint,
+      headers: this.config.otelHeaders || {},
     });
   }
 
   protected override createMetricExporter(): OTLPMetricExporter {
-    const { elasticConfig } = this.config;
-    
+    // Send to local OTEL collector
     return new OTLPMetricExporter({
-      url: `${elasticConfig!.apmServerUrl}/v1/metrics`,
-      headers: {
-        'Authorization': `ApiKey ${elasticConfig!.apiKey}`,
-      },
+      url: this.config.otelEndpoint,
+      headers: this.config.otelHeaders || {},
     });
   }
+
+
 
   override async initialize(): Promise<void> {
     await super.initialize();
     
     this.logger.info('Elastic observability provider initialized', {
       apmServer: this.config.elasticConfig!.apmServerUrl,
-      service: this.serviceName,
+      app_service: this.serviceName,
     });
   }
 

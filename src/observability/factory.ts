@@ -3,9 +3,8 @@ import {
   ObservabilityConfig,
 } from '@/observability/interfaces/observability-provider.interface';
 import { ElasticObservabilityProvider } from '@/observability/implementations/elastic-observability';
-import { GrafanaObservabilityProvider } from '@/observability/implementations/grafana-observability';
 
-export type ObservabilityProviderType = 'elastic' | 'grafana' | 'dual';
+export type ObservabilityProviderType = 'elastic' | 'none';
 
 export class ObservabilityFactory {
   static create(
@@ -16,11 +15,8 @@ export class ObservabilityFactory {
       case 'elastic':
         return new ElasticObservabilityProvider(config);
 
-      case 'grafana':
-        return new GrafanaObservabilityProvider(config);
-
-      case 'dual':
-        return [new ElasticObservabilityProvider(config), new GrafanaObservabilityProvider(config)];
+      case 'none':
+        return []; // Return empty array for no observability
 
       default:
         throw new Error(`Unsupported observability provider type: ${type}`);
@@ -34,12 +30,9 @@ export class ObservabilityFactory {
     const providers: ObservabilityProvider[] = [];
 
     for (const providerType of providerTypes) {
-      if (providerType === 'dual') {
-        const dualProviders = ObservabilityFactory.create(
-          'dual',
-          config
-        ) as ObservabilityProvider[];
-        providers.push(...dualProviders);
+      if (providerType === 'none') {
+        // Skip adding any providers for 'none' type
+        continue;
       } else {
         const provider = ObservabilityFactory.create(providerType, config) as ObservabilityProvider;
         providers.push(provider);
@@ -80,22 +73,13 @@ export class ObservabilityFactory {
       };
     }
 
-    // Add Grafana config if available
-    if (process.env['GRAFANA_CLOUD_USER_ID'] && process.env['GRAFANA_CLOUD_API_KEY']) {
-      config.grafanaConfig = {
-        userId: process.env['GRAFANA_CLOUD_USER_ID'],
-        apiKey: process.env['GRAFANA_CLOUD_API_KEY'],
-        prometheusUrl: process.env['GRAFANA_CLOUD_PROMETHEUS_URL']!,
-        lokiUrl: process.env['GRAFANA_CLOUD_LOKI_URL']!,
-        tempoUrl: process.env['GRAFANA_CLOUD_TEMPO_URL']!,
-      };
-    }
+    // Only Elasticsearch observability is supported
 
     return config;
   }
 
   private static getProviderTypesFromEnv(): ObservabilityProviderType[] {
-    const providers = process.env['OBSERVABILITY_PROVIDERS'] || 'dual';
+    const providers = process.env['OBSERVABILITY_PROVIDERS'] || 'elastic';
     return providers.split(',').map(p => p.trim() as ObservabilityProviderType);
   }
 
@@ -110,7 +94,7 @@ export class ObservabilityFactory {
   }
 
   static getSupportedTypes(): ObservabilityProviderType[] {
-    return ['elastic', 'grafana', 'dual'];
+    return ['elastic', 'none'];
   }
 
   static validateConfig(config: ObservabilityConfig): void {
@@ -133,13 +117,6 @@ export class ObservabilityFactory {
       }
     }
 
-    if (config.grafanaConfig) {
-      const required = ['userId', 'apiKey', 'prometheusUrl', 'lokiUrl', 'tempoUrl'];
-      for (const field of required) {
-        if (!config.grafanaConfig[field as keyof typeof config.grafanaConfig]) {
-          throw new Error(`Grafana ${field} is required`);
-        }
-      }
-    }
+    // Only Elasticsearch observability is supported
   }
 }

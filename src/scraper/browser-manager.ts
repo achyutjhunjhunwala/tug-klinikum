@@ -184,8 +184,11 @@ export class BrowserManager {
 
     switch (config.type) {
       case 'chromium':
+        // Use system Chromium in production or when PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set
+        const executablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'] || undefined;
         return chromium.launch({
           ...launchOptions,
+          executablePath,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',

@@ -92,7 +92,7 @@ export class HealthChecker {
       this.observability.logger.info('Health check completed', {
         status: overallStatus,
         uptime,
-        components: Object.entries(components).map(([name, health]) => ({
+        component_details: Object.entries(components).map(([name, health]) => ({
           name,
           status: health.status,
           responseTime: health.responseTime,

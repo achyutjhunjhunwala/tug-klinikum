@@ -13,7 +13,6 @@ import {
   ObservabilityMetrics,
   ObservabilityTracer,
 } from '@/observability/interfaces/observability-provider.interface';
-import { OtelLogger } from '@/observability/otel/logger';
 import { OtelMetrics } from '@/observability/otel/metrics';
 import { OtelTracer } from '@/observability/otel/tracer';
 
@@ -31,10 +30,12 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
   constructor(protected readonly config: ObservabilityConfig) {
     this.serviceName = config.serviceName;
     this.version = config.serviceVersion;
-    this.logger = new OtelLogger(config.serviceName, config.logLevel);
+    this.logger = this.createLogger();
     this.metrics = new OtelMetrics(config.serviceName);
     this.tracer = new OtelTracer(config.serviceName);
   }
+
+  protected abstract createLogger(): ObservabilityLogger;
 
     async initialize(): Promise<void> {
     if (this.initialized) {
@@ -53,7 +54,7 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
       const traceExporter = this.createTraceExporter();
       const metricExporter = this.createMetricExporter();
 
-      // Create SDK
+      // Create SDK (logs are handled by Pino → Filebeat)
       this.sdk = new NodeSDK({
         resource,
         traceExporter,
@@ -75,8 +76,8 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
       this.logger.logApplicationStart();
       this.logger.info('Observability provider initialized', {
         provider: this.constructor.name,
-        service: this.serviceName,
-        version: this.version,
+        app_service: this.serviceName,
+        app_version: this.version,
       });
 
       // Gracefully shut down the SDK on process exit

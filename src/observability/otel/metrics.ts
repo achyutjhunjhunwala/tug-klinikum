@@ -20,6 +20,7 @@ export class OtelMetrics implements ObservabilityMetrics {
   readonly applicationUptime: Gauge;
   readonly memoryUsage: Gauge;
   readonly cpuUsage: Gauge;
+  readonly heartbeat: Counter;
 
   constructor(serviceName: string) {
     this.meter = metrics.getMeter(serviceName);
@@ -69,6 +70,11 @@ export class OtelMetrics implements ObservabilityMetrics {
 
     this.cpuUsage = this.meter.createGauge('cpu_usage_percent', {
       description: 'CPU usage percentage',
+    });
+
+    // Heartbeat counter to verify pipeline end-to-end
+    this.heartbeat = this.meter.createCounter('app_heartbeat_total', {
+      description: 'Emitted to verify observability pipeline connectivity',
     });
 
     this.startSystemMetricsCollection();
@@ -128,5 +134,10 @@ export class OtelMetrics implements ObservabilityMetrics {
 
   recordDatabaseHealth(healthy: boolean): void {
     this.dbConnectionHealth.record(healthy ? 1 : 0);
+  }
+
+  // Simple heartbeat metric for connectivity checks
+  recordHeartbeat(attributes?: Record<string, string>): void {
+    this.heartbeat.add(1, attributes);
   }
 }

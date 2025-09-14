@@ -12,7 +12,6 @@ export type {
 
 // Database implementations
 export { ElasticsearchClient } from './implementations/elasticsearch-client';
-export { PostgreSQLClient } from './implementations/postgresql-client';
 
 // Factory
 export { DatabaseFactory } from './factory';

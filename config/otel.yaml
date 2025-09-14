@@ -1,0 +1,81 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+  resource:
+    attributes:
+      - key: service.name
+        from_attribute: service.name
+        action: upsert
+      - key: service.version
+        from_attribute: service.version
+        action: upsert
+      - key: deployment.environment
+        from_attribute: environment
+        action: upsert
+
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+exporters:
+  # Elasticsearch APM - Traces and Metrics
+  otlp/elastic:
+    endpoint: ${env:ELASTICSEARCH_APM_URL}
+    headers:
+      authorization: "ApiKey ${env:ELASTICSEARCH_API_KEY}"
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # Elasticsearch - Logs
+  elasticsearch:
+    endpoints:
+      - ${env:ELASTICSEARCH_CLOUD_URL}
+    api_key: ${env:ELASTICSEARCH_API_KEY}
+    logs_index: "hospital-scraper-logs"
+    tls:
+      insecure: false
+
+  # Debug logging (optional)
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    # Traces pipeline - to Elasticsearch APM
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/elastic, debug]
+
+    # Metrics pipeline - to Elasticsearch APM  
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/elastic, debug]
+
+    # Logs pipeline - to Elasticsearch
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [elasticsearch, debug]
+
+  telemetry:
+    logs:
+      level: "info"
