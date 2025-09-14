@@ -6,6 +6,11 @@ on:
   issue_comment:
     types: [created]
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   # Check if we should run the workflow
   check-permissions:
@@ -75,6 +80,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-permissions
     if: needs.check-permissions.outputs.should-run == 'true'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     
     steps:
       - name: Checkout code
@@ -217,6 +226,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-permissions
     if: needs.check-permissions.outputs.should-run == 'false' && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     
     steps:
       - name: Post instructions for external PR
