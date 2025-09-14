@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Hospital wait time scraper and analytics system",
   "main": "dist/index.js",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "build": "npx tsc",
     "start": "node -r module-alias/register dist/index.js",
@@ -12,6 +13,7 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist"
   },

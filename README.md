@@ -276,7 +276,28 @@ src/
 
 ## 📝 License
 
-MIT License - See [LICENSE](./LICENSE) file for details.
+This project is licensed under a **Custom Attribution-NonCommercial License**.
+
+### ✅ **Allowed (Non-Commercial Use):**
+- Personal projects and learning
+- Academic research and education
+- Open source projects
+- Non-profit organizations
+- Community contributions
+
+### ❌ **Requires Permission (Commercial Use):**
+- Commercial products or services
+- Revenue-generating applications
+- Proprietary commercial solutions
+- Selling or licensing the software
+
+### 📋 **Requirements:**
+- **Attribution**: Must credit Achyut Jhunjhunwala and link to original repository
+- **Commercial Permission**: Contact author for commercial use rights
+
+**For commercial licensing, please reach out through GitHub issues or repository discussions.**
+
+See the full [LICENSE](./LICENSE) file for complete terms and conditions.
 
 ---
 

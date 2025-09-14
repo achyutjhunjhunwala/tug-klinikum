@@ -1,0 +1,52 @@
+Hospital Scraper License
+=======================
+
+Copyright (c) 2024 Achyut Jhunjhunwala
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction for NON-COMMERCIAL purposes, including 
+without limitation the rights to use, copy, modify, merge, publish, distribute, 
+and sublicense copies of the Software, subject to the following conditions:
+
+ATTRIBUTION REQUIREMENT:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software. Any use, modification, or 
+distribution must include clear attribution to the original author 
+(Achyut Jhunjhunwala) and a link to the original repository.
+
+COMMERCIAL USE RESTRICTION:
+Commercial use of this Software is strictly prohibited without explicit written 
+permission from the copyright holder. Commercial use includes, but is not limited to:
+- Using the Software in any commercial product or service
+- Selling or licensing the Software
+- Using the Software to generate revenue
+- Incorporating the Software into proprietary commercial solutions
+
+For commercial use permissions, please contact: achyutjhunjhunwala@[contact-method]
+
+NON-COMMERCIAL USE:
+Non-commercial use includes:
+- Personal projects and learning
+- Academic research and education  
+- Open source projects
+- Non-profit organizations
+- Community contributions and improvements
+
+CONTRIBUTIONS:
+By contributing to this project, you agree that your contributions will be licensed 
+under the same terms as this license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+DISCLAIMER:
+This software is designed to scrape publicly available information from hospital 
+websites. Users are responsible for ensuring their use complies with the target 
+website's terms of service and applicable laws. The author assumes no responsibility 
+for how this software is used.
