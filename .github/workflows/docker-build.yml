@@ -74,14 +74,3 @@ jobs:
         min-versions-to-keep: 0
         token: ${{ secrets.GITHUB_TOKEN }}
         delete-only-untagged-versions: true
-
-    - name: Clean up old tagged versions  
-      if: github.event_name != 'pull_request'
-      uses: actions/delete-package-versions@v5
-      continue-on-error: true
-      with:
-        package-name: 'tug-klinikum'
-        package-type: 'container'
-        min-versions-to-keep: 3
-        token: ${{ secrets.GITHUB_TOKEN }}
-        delete-only-untagged-versions: false
