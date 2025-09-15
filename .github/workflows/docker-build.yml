@@ -55,6 +55,14 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    - name: Debug - Show pushed tags
+      run: |
+        echo "## 📦 Pushed Image Tags" >> $GITHUB_STEP_SUMMARY
+        echo "The following tags were pushed:" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
     - name: Clean up old untagged versions first
       if: github.event_name != 'pull_request'
       uses: actions/delete-package-versions@v5
@@ -73,6 +81,6 @@ jobs:
       with:
         package-name: 'tug-klinikum'
         package-type: 'container'
-        min-versions-to-keep: 2
+        min-versions-to-keep: 3
         token: ${{ secrets.GITHUB_TOKEN }}
         delete-only-untagged-versions: false
