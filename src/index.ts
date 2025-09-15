@@ -13,15 +13,24 @@ import { HealthEndpoint } from './health-endpoint';
 
 class HospitalScraperApplication {
   private database?: ReturnType<typeof DatabaseFactory.createFromEnv>;
-  private observabilityProviders: ReturnType<typeof ObservabilityFactory.createFromEnv> = [];
+  private observabilityProvider?: ReturnType<typeof ObservabilityFactory.createFromEnv>;
   private scraper?: PlaywrightScraper;
   private cronManager?: CronManager;
   private jobRunner?: JobRunner;
   private healthChecker?: HealthChecker;
   private healthEndpoint?: HealthEndpoint;
   private configs?: ReturnType<typeof validateAllConfigurations>;
-  
+
   private shutdownInProgress = false;
+  private startTime = Date.now();
+
+  // Getter to ensure observability provider is available after initialization
+  private get obs(): ReturnType<typeof ObservabilityFactory.createFromEnv> {
+    if (!this.observabilityProvider) {
+      throw new Error('Observability provider not initialized');
+    }
+    return this.observabilityProvider;
+  }
 
   async start(): Promise<void> {
     try {
@@ -42,41 +51,40 @@ class HospitalScraperApplication {
       // 5. Initialize scraper
       await this.initializeScraper();
 
-      // 5. Initialize scheduler and job runner
+      // 6. Initialize scheduler and job runner
       await this.initializeScheduler();
 
-      // 6. Initialize health checker
+      // 7. Initialize health checker
       await this.initializeHealthChecker();
 
-      // 7. Start health endpoint
+      // 8. Start health endpoint
       await this.startHealthEndpoint();
 
-      // 8. Schedule jobs
+      // 9. Schedule jobs
       await this.scheduleJobs();
 
-      // 9. Set up graceful shutdown
+      // 10. Set up graceful shutdown
       this.setupGracefulShutdown();
 
-      if (this.observabilityProviders.length > 0) {
-        const primaryObservability = this.observabilityProviders[0];
-        if (primaryObservability) {
-          primaryObservability.logger.logApplicationStart();
-          primaryObservability.logger.info('Application started successfully', {
-            configSummary: getConfigurationSummary(),
-          });
-        }
-      }
+      // Final startup confirmation
+      this.obs.logger.logApplicationStart();
+      this.obs.logger.info('Application started successfully', {
+        configSummary: getConfigurationSummary(),
+        startup_duration_ms: Date.now() - this.startTime,
+      });
+
+      // Record successful startup metric
+      this.obs.metrics.recordHeartbeat({ phase: 'startup_complete' });
 
     } catch (error) {
       console.error('❌ Failed to start Hospital Scraper Application:', error);
-      
-      if (this.observabilityProviders.length > 0) {
-        const primaryObservability = this.observabilityProviders[0];
-        if (primaryObservability) {
-          primaryObservability.recordError('application_startup_failed', error as Error);
-        }
+
+      if (this.observabilityProvider) {
+        this.observabilityProvider.recordError('application_startup_failed', error as Error, {
+          startup_phase: 'initialization',
+        });
       }
-      
+
       process.exit(1);
     }
   }
@@ -92,20 +100,22 @@ class HospitalScraperApplication {
 
   private async initializeObservability(): Promise<void> {
     console.log('📊 Initializing observability...');
-    
-    this.observabilityProviders = ObservabilityFactory.createFromEnv();
-    await ObservabilityFactory.initializeProviders(this.observabilityProviders);
-    
-    console.log(`✅ Observability initialized (${this.observabilityProviders.length} providers)`);
+
+    this.observabilityProvider = ObservabilityFactory.createFromEnv();
+    await ObservabilityFactory.initializeProvider(this.observabilityProvider);
+
+    console.log('✅ Observability initialized (Elastic provider)');
 
     // Emit a startup span and heartbeat metric to verify pipelines
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (primaryObservability) {
-      await primaryObservability.tracer.wrapAsync('startup_telemetry_check', async () => {
-        primaryObservability.metrics.recordHeartbeat({ phase: 'post_init' });
-        primaryObservability.logger.info('Emitted startup heartbeat');
+    await this.observabilityProvider!.tracer.wrapAsync('startup_telemetry_check', async (span) => {
+      span.setAttributes({
+        'startup.phase': 'post_observability_init',
+        'startup.timestamp': Date.now(),
       });
-    }
+
+      this.observabilityProvider!.metrics.recordHeartbeat({ phase: 'post_init' });
+      this.observabilityProvider!.logger.info('Observability pipeline verified with startup heartbeat');
+    });
   }
 
   private async initializeDatabaseEarly(): Promise<void> {
@@ -128,13 +138,12 @@ class HospitalScraperApplication {
 
   private async initializeDatabase(): Promise<void> {
     // Database already initialized early, just log with observability
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (!primaryObservability || !this.database) {
+    if (!this.database) {
       return;
     }
-    
+
     const health = await this.database.healthCheck();
-    primaryObservability.logger.info('Database connection verified', {
+    this.obs.logger.info('Database connection verified', {
       type: this.configs?.database.type,
       health: {
         connected: health.connected,
@@ -142,39 +151,47 @@ class HospitalScraperApplication {
         version: health.version,
       },
     });
+
+    // Record database health metrics
+    this.obs.recordHealthCheck('database', health.connected, health.responseTimeMs);
   }
 
 
   private async initializeScraper(): Promise<void> {
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (!primaryObservability) {
-      return;
-    }
-    
-    return primaryObservability.tracer.wrapAsync('initialize_scraper', async () => {
-      primaryObservability.logger.info('Initializing scraper...');
-      
+    return this.obs.tracer.wrapAsync('initialize_scraper', async (span) => {
+      this.obs.logger.info('Initializing scraper...');
+
       if (this.configs) {
+        span.setAttributes({
+          'scraper.target_url': this.configs.scraping.targetUrl,
+          'scraper.browser_type': this.configs.scraping.browser.type,
+        });
+
         this.scraper = new PlaywrightScraper(
           this.configs.scraping,
-          primaryObservability
+          this.obs
         );
       }
-      
+
       if (this.scraper) {
         await this.scraper.initialize();
       }
-      
+
       if (this.scraper) {
         // Verify scraper with health check
         const scraperHealthy = await this.scraper.healthCheck();
         if (!scraperHealthy) {
-          throw new Error('Scraper health check failed');
+          const error = new Error('Scraper health check failed');
+          this.obs.tracer.recordException(span, error);
+          throw error;
         }
+
+        // Record successful scraper health check
+        this.obs.recordHealthCheck('scraper', scraperHealthy, 0);
       }
-      
+
       if (this.configs) {
-        primaryObservability.logger.info('Scraper initialized successfully', {
+        this.obs.logger.info('Scraper initialized successfully', {
           targetUrl: this.configs.scraping.targetUrl,
           browserType: this.configs.scraping.browser.type,
         });
@@ -183,17 +200,17 @@ class HospitalScraperApplication {
   }
 
   private async initializeScheduler(): Promise<void> {
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (!primaryObservability) {
-      return;
-    }
-    
-    return primaryObservability.tracer.wrapAsync('initialize_scheduler', async () => {
-      primaryObservability.logger.info('Initializing scheduler...');
-      
-      this.cronManager = new CronManager(primaryObservability);
-      
+    return this.obs.tracer.wrapAsync('initialize_scheduler', async (span) => {
+      this.obs.logger.info('Initializing scheduler...');
+
+      this.cronManager = new CronManager(this.obs);
+
       if (this.configs) {
+        span.setAttributes({
+          'scheduler.scraping_interval': this.configs.app.scrapingInterval,
+          'scheduler.timezone': this.configs.app.timezone,
+        });
+
         this.jobRunner = new JobRunner(
           {
             scrapingInterval: this.configs.app.scrapingInterval,
@@ -203,89 +220,97 @@ class HospitalScraperApplication {
           },
           this.database!,
           this.scraper!,
-          primaryObservability
+          this.obs
         );
       }
-      
+
       if (this.jobRunner) {
         await this.jobRunner.initialize();
       }
-      
-      primaryObservability.logger.info('Scheduler initialized successfully');
+
+      this.obs.logger.info('Scheduler initialized successfully');
     });
   }
 
   private async initializeHealthChecker(): Promise<void> {
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (!primaryObservability) {
-      return;
-    }
-    
-    primaryObservability.logger.info('Initializing health checker...');
-    
+    this.obs.logger.info('Initializing health checker...');
+
     this.healthChecker = new HealthChecker(
       this.database!,
       this.scraper!,
-      primaryObservability,
+      this.obs,
       this.jobRunner
     );
-    
-    // Perform initial health check (skip strict validation due to OpenTelemetry conflicts)
+
+    // Perform initial health check
     const initialHealth = await this.healthChecker.performHealthCheck();
-    
+
     if (initialHealth.status === 'unhealthy') {
-      primaryObservability.logger.warn('Initial health check reported unhealthy status, but continuing startup', {
+      this.obs.logger.warn('Initial health check reported unhealthy status, but continuing startup', {
         healthStatus: initialHealth
       });
+
+      // Record unhealthy components
+      Object.entries(initialHealth.components).forEach(([component, health]) => {
+        if (health.status === 'unhealthy') {
+          this.obs.recordHealthCheck(component, false, health.responseTime || 0);
+        }
+      });
+    } else {
+      // Record healthy components
+      Object.entries(initialHealth.components).forEach(([component, health]) => {
+        this.obs.recordHealthCheck(component, health.status === 'healthy', health.responseTime || 0);
+      });
     }
-    
-    primaryObservability.logger.info('Health checker initialized successfully', {
+
+    this.obs.logger.info('Health checker initialized successfully', {
       status: initialHealth.status,
       component_names: Object.keys(initialHealth.components),
     });
   }
 
   private async startHealthEndpoint(): Promise<void> {
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (!primaryObservability) {
-      return;
-    }
-    
-    return primaryObservability.tracer.wrapAsync('start_health_endpoint', async () => {
-      primaryObservability.logger.info('Starting health endpoint...');
-      
+    return this.obs.tracer.wrapAsync('start_health_endpoint', async (span) => {
+      this.obs.logger.info('Starting health endpoint...');
+
       if (this.configs) {
+        span.setAttributes({
+          'health_endpoint.port': this.configs.app.port,
+        });
+
         this.healthEndpoint = new HealthEndpoint(
           this.healthChecker!,
           this.configs.app.port
         );
       }
-      
+
       if (this.healthEndpoint) {
         this.healthEndpoint.start();
       }
-      
+
       if (this.configs) {
-          primaryObservability.logger.info('Health endpoint started successfully', {
-            port: this.configs.app.port,
-            endpoints: ['/health', '/health/ready', '/health/live', '/health/simple'],
-          });
-        }
+        this.obs.logger.info('Health endpoint started successfully', {
+          port: this.configs.app.port,
+          endpoints: ['/health', '/health/ready', '/health/live', '/health/simple'],
+        });
+      }
     });
   }
 
   private async scheduleJobs(): Promise<void> {
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (!primaryObservability) {
-      return;
-    }
-    
-    return primaryObservability.tracer.wrapAsync('schedule_jobs', async () => {
-      primaryObservability.logger.info('Scheduling jobs...');
-      
+    return this.obs.tracer.wrapAsync('schedule_jobs', async (span) => {
+      this.obs.logger.info('Scheduling jobs...');
+
       if (this.configs) {
         const scrapingSchedule = `*/${this.configs.app.scrapingInterval} * * * *`; // Every N minutes
-        
+        const healthCheckSchedule = '*/5 * * * *'; // Every 5 minutes
+
+        span.setAttributes({
+          'jobs.scraping_schedule': scrapingSchedule,
+          'jobs.health_check_schedule': healthCheckSchedule,
+          'jobs.timezone': this.configs.app.timezone,
+        });
+
         this.cronManager!.scheduleJob(
           {
             name: 'hospital_scraping',
@@ -303,7 +328,7 @@ class HospitalScraperApplication {
         this.cronManager!.scheduleJob(
           {
             name: 'health_check',
-            schedule: '*/5 * * * *', // Every 5 minutes
+            schedule: healthCheckSchedule,
             timezone: this.configs.app.timezone,
             runOnStart: false,
             enabled: true,
@@ -313,8 +338,9 @@ class HospitalScraperApplication {
           }
         );
 
-        primaryObservability.logger.info('Jobs scheduled successfully', {
+        this.obs.logger.info('Jobs scheduled successfully', {
           scrapingSchedule,
+          healthCheckSchedule,
           scrapingInterval: this.configs.app.scrapingInterval,
           timezone: this.configs.app.timezone,
         });
@@ -323,76 +349,119 @@ class HospitalScraperApplication {
   }
 
   private setupGracefulShutdown(): void {
-    const primaryObservability = this.observabilityProviders?.[0];
-    if (!primaryObservability) {
-      return;
-    }
-    
     const shutdown = async (signal: string) => {
       if (this.shutdownInProgress) {
         console.log('🔄 Shutdown already in progress...');
         return;
       }
-      
+
       this.shutdownInProgress = true;
-      
+
       console.log(`🛑 Received ${signal}. Starting graceful shutdown...`);
-      primaryObservability.logger.info('Starting graceful shutdown', { signal });
 
-      let shutdownTimer: NodeJS.Timeout | undefined;
-      if (this.configs) {
-        const shutdownTimeout = this.configs.app.gracefulShutdownTimeout;
-        shutdownTimer = setTimeout(() => {
-          console.log('⚠️ Shutdown timeout reached, forcing exit...');
+      // Start graceful shutdown tracing if observability is available
+      const shutdownOperation = async () => {
+
+        if (this.observabilityProvider) {
+          this.observabilityProvider.logger.info('Starting graceful shutdown', { signal });
+        }
+
+        let shutdownTimer: NodeJS.Timeout | undefined;
+        if (this.configs) {
+          const shutdownTimeout = this.configs.app.gracefulShutdownTimeout;
+          shutdownTimer = setTimeout(() => {
+            console.log('⚠️ Shutdown timeout reached, forcing exit...');
+            process.exit(1);
+          }, shutdownTimeout);
+        }
+
+        try {
+          // 1. Stop accepting new jobs
+          if (this.cronManager) {
+            if (this.observabilityProvider) {
+              this.observabilityProvider.logger.info('Shutting down cron manager...');
+            }
+            await this.cronManager.shutdown();
+          }
+
+          // 2. Wait for current jobs to complete
+          if (this.jobRunner) {
+            if (this.observabilityProvider) {
+              this.observabilityProvider.logger.info('Shutting down job runner...');
+            }
+            await this.jobRunner.shutdown();
+          }
+
+          // 3. Shutdown scraper
+          if (this.scraper) {
+            if (this.observabilityProvider) {
+              this.observabilityProvider.logger.info('Shutting down scraper...');
+            }
+            await this.scraper.shutdown();
+          }
+
+          // 4. Stop health endpoint
+          if (this.healthEndpoint) {
+            if (this.observabilityProvider) {
+              this.observabilityProvider.logger.info('Stopping health endpoint...');
+            }
+            this.healthEndpoint.stop();
+          }
+
+          // 5. Disconnect database
+          if (this.database) {
+            if (this.observabilityProvider) {
+              this.observabilityProvider.logger.info('Disconnecting database...');
+            }
+            await this.database.disconnect();
+          }
+
+          // 6. Record shutdown metrics and shutdown observability (last)
+          if (this.observabilityProvider) {
+            this.observabilityProvider.logger.logApplicationShutdown();
+            await ObservabilityFactory.shutdownProvider(this.observabilityProvider);
+          }
+
+          clearTimeout(shutdownTimer);
+          console.log('✅ Graceful shutdown completed');
+          process.exit(0);
+
+        } catch (error) {
+          if (this.observabilityProvider) {
+            this.observabilityProvider.recordError('shutdown_error', error as Error, {
+              'shutdown.phase': 'error_during_shutdown',
+              'shutdown.signal': signal,
+            });
+          }
+
+          clearTimeout(shutdownTimer);
+          console.error('❌ Error during shutdown:', error);
           process.exit(1);
-        }, shutdownTimeout);
-      }
-
-      try {
-        // 1. Stop accepting new jobs
-        if (this.cronManager) {
-          primaryObservability.logger.info('Shutting down cron manager...');
-          await this.cronManager.shutdown();
         }
+      };
 
-        // 2. Wait for current jobs to complete
-        if (this.jobRunner) {
-          primaryObservability.logger.info('Shutting down job runner...');
-          await this.jobRunner.shutdown();
-        }
+      if (this.observabilityProvider) {
+        await this.observabilityProvider.tracer.wrapAsync('graceful_shutdown', async (span) => {
+          span.setAttributes({
+            'shutdown.signal': signal,
+            'shutdown.start_time': Date.now(),
+          });
 
-        // 3. Shutdown scraper
-        if (this.scraper) {
-          primaryObservability.logger.info('Shutting down scraper...');
-          await this.scraper.shutdown();
-        }
-
-        // 4. Stop health endpoint
-        if (this.healthEndpoint) {
-          primaryObservability.logger.info('Stopping health endpoint...');
-          this.healthEndpoint.stop();
-        }
-
-        // 5. Disconnect database
-        if (this.database) {
-          primaryObservability.logger.info('Disconnecting database...');
-          await this.database.disconnect();
-        }
-
-        // 6. Shutdown observability (last)
-        primaryObservability.logger.logApplicationShutdown();
-        if (this.observabilityProviders.length > 0) {
-          await ObservabilityFactory.shutdownProviders(this.observabilityProviders);
-        }
-
-        clearTimeout(shutdownTimer);
-        console.log('✅ Graceful shutdown completed');
-        process.exit(0);
-
-      } catch (error) {
-        clearTimeout(shutdownTimer);
-        console.error('❌ Error during shutdown:', error);
-        process.exit(1);
+          try {
+            await shutdownOperation();
+            span.setAttributes({
+              'shutdown.success': true,
+            });
+          } catch (error) {
+            span.setAttributes({
+              'shutdown.success': false,
+            });
+            this.observabilityProvider!.tracer.recordException(span, error as Error);
+            throw error;
+          }
+        });
+      } else {
+        await shutdownOperation();
       }
     };
 
@@ -404,22 +473,20 @@ class HospitalScraperApplication {
     // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
       console.error('💥 Uncaught Exception:', error);
-      if (this.observabilityProviders.length > 0) {
-        const primaryObservability = this.observabilityProviders[0];
-        if (primaryObservability) {
-          primaryObservability.recordError('uncaught_exception', error);
-        }
+      if (this.observabilityProvider) {
+        this.observabilityProvider.recordError('uncaught_exception', error, {
+          error_source: 'process_uncaught_exception',
+        });
       }
       shutdown('uncaughtException');
     });
 
     process.on('unhandledRejection', (reason, promise) => {
       console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-      if (this.observabilityProviders.length > 0) {
-        const primaryObservability = this.observabilityProviders[0];
-        if (primaryObservability) {
-          primaryObservability.recordError('unhandled_rejection', new Error(String(reason)));
-        }
+      if (this.observabilityProvider) {
+        this.observabilityProvider.recordError('unhandled_rejection', new Error(String(reason)), {
+          error_source: 'process_unhandled_rejection',
+        });
       }
       shutdown('unhandledRejection');
     });

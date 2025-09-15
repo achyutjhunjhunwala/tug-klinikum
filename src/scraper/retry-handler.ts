@@ -44,124 +44,172 @@ export class RetryHandler {
     customConfig?: Partial<RetryConfig>
   ): Promise<RetryResult<T>> {
     const finalConfig = { ...this.defaultConfig, ...this.config, ...customConfig };
-    const startTime = Date.now();
 
-    return this.observability.tracer.wrapAsync('retry_operation', async span => {
-      span.setAttributes({
-        'retry.operation': operationName,
-        'retry.max_attempts': finalConfig.maxAttempts,
-        'retry.base_delay_ms': finalConfig.baseDelayMs,
-      });
+    return this.observability.tracer.wrapRetryOperation(
+      operationName,
+      async () => {
+        let lastError: Error | undefined;
+        let attempt = 0;
+        const operationStartTime = Date.now();
 
-      this.observability.logger.info('Starting retry operation', {
-        operation: operationName,
-        maxAttempts: finalConfig.maxAttempts,
-        config: finalConfig,
-      });
+        // Production-focused logging - only log retry start for important operations
+        if (process.env['NODE_ENV'] !== 'production' || operationName.includes('scraping')) {
+          this.observability.logger.info('Starting retry operation', {
+            operation: operationName,
+            maxAttempts: finalConfig.maxAttempts,
+            timeout_config: {
+              base_delay_ms: finalConfig.baseDelayMs,
+              max_delay_ms: finalConfig.maxDelayMs,
+              backoff_multiplier: finalConfig.backoffMultiplier,
+            },
+          });
+        }
 
-      let lastError: Error | undefined;
-      let attempt = 0;
+        while (attempt < finalConfig.maxAttempts) {
+          attempt++;
 
-      while (attempt < finalConfig.maxAttempts) {
-        attempt++;
+          try {
+            // Use the enhanced tracer for retry operations
+            const result = await this.observability.tracer.wrapRetryOperation(
+              `${operationName}_attempt`,
+              operation,
+              attempt,
+              finalConfig.maxAttempts
+            );
 
-        const attemptSpan = this.observability.tracer.startSpan(
-          `${operationName}_attempt_${attempt}`
-        );
-        attemptSpan.setAttributes({
-          'retry.attempt': attempt,
-          'retry.max_attempts': finalConfig.maxAttempts,
+            const totalTime = Date.now() - operationStartTime;
+
+            // Log successful retry completion with business context
+            this.observability.logger.info('Retry operation succeeded', {
+              operation: operationName,
+              attempts_used: attempt,
+              total_time_ms: totalTime,
+              success_on_attempt: attempt,
+            });
+
+            // Record retry success metrics
+            this.observability.metrics.recordRecovery(operationName, totalTime);
+
+            return {
+              success: true,
+              data: result,
+              attempts: attempt,
+              totalTime,
+            };
+
+          } catch (error) {
+            lastError = error as Error;
+            const isRetryable = this.shouldRetry(lastError, attempt, finalConfig);
+            const isFinalAttempt = attempt >= finalConfig.maxAttempts;
+
+            // Enhanced error categorization
+            const errorCategory = this.categorizeError(lastError);
+
+            // Log retry attempts with proper levels
+            if (isFinalAttempt) {
+              // Always log final failures
+              this.observability.logger.logScrapingError(
+                operationName,
+                Date.now() - operationStartTime,
+                lastError,
+                attempt
+              );
+            } else if (isRetryable) {
+              // Log retries as warnings
+              this.observability.logger.logScrapingRetry(
+                operationName,
+                attempt,
+                lastError.message
+              );
+            } else {
+              // Log non-retryable errors immediately
+              this.observability.logger.error('Non-retryable error encountered', lastError, {
+                operation: operationName,
+                attempt,
+                error_category: errorCategory,
+                retryable: false,
+              });
+            }
+
+            // Record error metrics by category
+            this.observability.metrics.recordError(errorCategory, lastError.name);
+
+            if (!isRetryable || isFinalAttempt) {
+              break;
+            }
+
+            // Calculate delay with exponential backoff
+            const delay = this.calculateDelay(attempt, finalConfig);
+
+            // Only log delay in development
+            if (process.env['NODE_ENV'] !== 'production') {
+              this.observability.logger.debug('Waiting before retry', {
+                operation: operationName,
+                attempt,
+                delayMs: delay,
+                next_attempt: attempt + 1,
+              });
+            }
+
+            await this.sleep(delay);
+          }
+        }
+
+        // All attempts failed - handle final failure
+        const totalTime = Date.now() - operationStartTime;
+        const errorCategory = this.categorizeError(lastError!);
+
+        // Enhanced error recording with comprehensive context
+        this.observability.recordError('retry_operation_exhausted', lastError!, {
+          operation: operationName,
+          attempts_exhausted: attempt,
+          total_time_ms: totalTime,
+          error_category: errorCategory,
+          final_error_name: lastError?.name,
+          retryable_errors: finalConfig.retryableErrors.join(','),
         });
 
-        try {
-          this.observability.logger.debug('Executing attempt', {
-            operation: operationName,
-            attempt,
-            maxAttempts: finalConfig.maxAttempts,
-          });
+        // Record failure metrics
+        this.observability.metrics.recordError('retry_exhausted', lastError?.name || 'UnknownError');
 
-          const result = await operation();
+        return {
+          success: false,
+          error: lastError,
+          attempts: attempt,
+          totalTime,
+        };
+      },
+      0, // Not using the enhanced method's retry count here
+      finalConfig.maxAttempts
+    );
+  }
 
-          attemptSpan.setStatus({ code: 1 }); // OK
-          attemptSpan.end();
+  /**
+   * Enhanced error categorization for better monitoring
+   */
+  private categorizeError(error: Error): string {
+    const message = error.message.toLowerCase();
+    const name = error.name.toLowerCase();
 
-          const totalTime = Date.now() - startTime;
+    // Network-related errors
+    if (message.includes('timeout') || name.includes('timeout')) return 'timeout';
+    if (message.includes('network') || message.includes('net::err')) return 'network';
+    if (message.includes('connection') || message.includes('refused')) return 'connection';
+    if (message.includes('dns') || message.includes('name_not_resolved')) return 'dns';
 
-          span.setAttributes({
-            'retry.success': true,
-            'retry.attempts': attempt,
-            'retry.total_time_ms': totalTime,
-          });
+    // Browser-related errors
+    if (message.includes('browser') || message.includes('chrome')) return 'browser';
+    if (message.includes('page') || message.includes('navigation')) return 'page_navigation';
+    if (message.includes('protocol') || message.includes('session')) return 'browser_protocol';
 
-          this.observability.logger.info('Retry operation succeeded', {
-            operation: operationName,
-            attempt,
-            totalTime,
-          });
+    // Application-specific errors
+    if (message.includes('element') || message.includes('selector')) return 'element_not_found';
+    if (message.includes('parse') || message.includes('validation')) return 'data_parsing';
 
-          return {
-            success: true,
-            data: result,
-            attempts: attempt,
-            totalTime,
-          };
-        } catch (error) {
-          lastError = error as Error;
+    // System errors
+    if (message.includes('memory') || message.includes('resource')) return 'system_resource';
 
-          attemptSpan.recordException(lastError);
-          attemptSpan.setStatus({ code: 2, message: lastError.message }); // ERROR
-          attemptSpan.end();
-
-          const shouldRetry = this.shouldRetry(lastError, attempt, finalConfig);
-
-          this.observability.logger.warn('Attempt failed', {
-            operation: operationName,
-            attempt,
-            error: lastError.message,
-            errorName: lastError.name,
-            shouldRetry,
-          });
-
-          if (!shouldRetry || attempt >= finalConfig.maxAttempts) {
-            break;
-          }
-
-          // Calculate delay with exponential backoff
-          const delay = this.calculateDelay(attempt, finalConfig);
-
-          this.observability.logger.debug('Waiting before retry', {
-            operation: operationName,
-            attempt,
-            delayMs: delay,
-          });
-
-          await this.sleep(delay);
-        }
-      }
-
-      // All attempts failed
-      const totalTime = Date.now() - startTime;
-
-      span.setAttributes({
-        'retry.success': false,
-        'retry.attempts': attempt,
-        'retry.total_time_ms': totalTime,
-        'retry.final_error': lastError?.name || 'Unknown',
-      });
-
-      this.observability.recordError('retry_operation_failed', lastError!, {
-        operation: operationName,
-        attempts: attempt,
-        totalTime,
-      });
-
-      return {
-        success: false,
-        error: lastError,
-        attempts: attempt,
-        totalTime,
-      };
-    });
+    return 'unknown';
   }
 
   private shouldRetry(error: Error, attempt: number, config: RetryConfig): boolean {
