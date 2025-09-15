@@ -128,6 +128,7 @@ jobs:
           if npm run format:check 2>&1 | tee prettier-output.txt; then
             echo "✅ Code is properly formatted" >> $GITHUB_STEP_SUMMARY
             echo "prettier-status=✅ Passed" >> $GITHUB_OUTPUT
+            echo "prettier-failed=false" >> $GITHUB_OUTPUT
           else
             echo "❌ Code formatting issues found" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -136,8 +137,6 @@ jobs:
             echo "prettier-status=❌ Failed" >> $GITHUB_OUTPUT
             echo "prettier-failed=true" >> $GITHUB_OUTPUT
             exit 1
-          else
-            echo "prettier-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Run TypeScript check
@@ -148,6 +147,7 @@ jobs:
           if npx tsc --noEmit 2>&1 | tee typescript-output.txt; then
             echo "✅ TypeScript compilation successful" >> $GITHUB_STEP_SUMMARY
             echo "typescript-status=✅ Passed" >> $GITHUB_OUTPUT
+            echo "typescript-failed=false" >> $GITHUB_OUTPUT
           else
             echo "❌ TypeScript compilation errors" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -156,8 +156,6 @@ jobs:
             echo "typescript-status=❌ Failed" >> $GITHUB_OUTPUT
             echo "typescript-failed=true" >> $GITHUB_OUTPUT
             exit 1
-          else
-            echo "typescript-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Run tests (if available)
@@ -168,6 +166,7 @@ jobs:
           if npm test 2>&1 | tee test-output.txt; then
             echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
             echo "test-status=✅ Passed" >> $GITHUB_OUTPUT
+            echo "test-failed=false" >> $GITHUB_OUTPUT
           else
             echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -175,8 +174,6 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "test-status=❌ Failed" >> $GITHUB_OUTPUT
             echo "test-failed=true" >> $GITHUB_OUTPUT
-          else
-            echo "test-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Build check
@@ -187,6 +184,7 @@ jobs:
           if npm run build 2>&1 | tee build-output.txt; then
             echo "✅ Build successful" >> $GITHUB_STEP_SUMMARY
             echo "build-status=✅ Passed" >> $GITHUB_OUTPUT
+            echo "build-failed=false" >> $GITHUB_OUTPUT
           else
             echo "❌ Build failed" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -195,8 +193,6 @@ jobs:
             echo "build-status=❌ Failed" >> $GITHUB_OUTPUT
             echo "build-failed=true" >> $GITHUB_OUTPUT
             exit 1
-          else
-            echo "build-failed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Comment PR with results

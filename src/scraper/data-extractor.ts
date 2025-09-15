@@ -35,34 +35,108 @@ export class DataExtractor {
     const startTime = Date.now();
 
     return this.observability.tracer.wrapAsync('data_extraction', async span => {
+      // Set comprehensive span attributes
       span.setAttributes({
         'extraction.url': sourceUrl,
         'extraction.scraper_id': scraperId,
+        'extraction.start_time': startTime,
+        'extraction.domain': new URL(sourceUrl).hostname,
       });
 
-      this.observability.logger.info('Starting data extraction', {
-        url: sourceUrl,
-        scraperId,
-      });
+      // Production-focused logging - only log important extraction start
+      if (process.env['NODE_ENV'] !== 'production') {
+        this.observability.logger.debug('Starting data extraction', {
+          url: sourceUrl,
+          scraperId,
+        });
+      }
 
       try {
-        // Wait for page to be fully loaded
-        await this.waitForPageReady(page);
+        // Wait for page to be fully loaded with timing
+        await this.observability.tracer.wrapAsync('page_ready_wait', async (pageReadySpan) => {
+          pageReadySpan.setAttributes({
+            'page.url': sourceUrl,
+          });
 
-        // Extract raw data from page
-        const rawData = await this.scrapePageData(page);
-        const elementsFound = Object.keys(rawData);
-
-        this.observability.logger.debug('Raw data extracted', {
-          elementsFound,
-          rawDataKeys: Object.keys(rawData),
+          try {
+            await this.waitForPageReady(page);
+            pageReadySpan.setAttributes({ 'page.ready': true });
+          } catch (pageError) {
+            this.observability.tracer.recordException(pageReadySpan, pageError as Error, {
+              'page.ready_failure': true,
+            });
+            throw pageError;
+          }
         });
 
-        // Parse and validate the scraped data
-        const parsedData = await this.parseScrapedData(rawData);
+        // Extract raw data from page with timing
+        const scrapingStartTime = Date.now();
+        const rawData = await this.scrapePageData(page);
+        const scrapingDuration = Date.now() - scrapingStartTime;
+        
+        const elementsFound = Object.keys(rawData);
+        
+        // Enhanced span attributes with scraping details
+        span.setAttributes({
+          'extraction.elements_found_count': elementsFound.length,
+          'extraction.scraping_duration_ms': scrapingDuration,
+          'extraction.raw_data_keys': elementsFound.join(','),
+        });
 
-        // Validate the data
-        const validatedData = ScrapedDataSchema.parse(parsedData);
+        // Only log raw data in development
+        if (process.env['NODE_ENV'] !== 'production') {
+          this.observability.logger.debug('Raw data extracted', {
+            elementsFound,
+            scrapingDuration,
+            rawDataKeys: Object.keys(rawData),
+          });
+        }
+
+        // Parse and validate the scraped data with timing
+        const parsingStartTime = Date.now();
+        const parsedData = await this.parseScrapedData(rawData);
+        const parsingDuration = Date.now() - parsingStartTime;
+
+        // Validate the data with proper error handling
+        let validatedData: ScrapedData;
+        try {
+          validatedData = ScrapedDataSchema.parse(parsedData);
+        } catch (validationError) {
+          const error = new Error(`Data validation failed: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`);
+          this.observability.tracer.recordException(span, error, {
+            'validation.failed': true,
+            'validation.raw_data': JSON.stringify(parsedData),
+          });
+          
+          // Log data quality issue
+          this.observability.logger.logDataQualityIssue('validation_failed', {
+            parsedData,
+            validationError: validationError instanceof Error ? validationError.message : String(validationError),
+          });
+          
+          throw error;
+        }
+
+        // Get browser metadata efficiently
+        const browserMetadata = await page.evaluate(() => {
+          const userAgent = navigator.userAgent;
+          let browserType: 'chromium' | 'firefox' | 'webkit' = 'chromium';
+          if (userAgent.includes('Firefox')) browserType = 'firefox';
+          else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) browserType = 'webkit';
+
+          // In browser context: screen and window are available
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const w = (globalThis as any).window || (globalThis as any);
+          return {
+            browserType,
+            userAgent,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            screenResolution: `${(globalThis as any).screen.width}x${(globalThis as any).screen.height}`,
+            viewportSize: `${w.innerWidth}x${w.innerHeight}`,
+          };
+        });
+
+        const totalProcessingTime = Date.now() - startTime;
 
         // Create the hospital metric
         const hospitalMetric: CreateHospitalMetric = {
@@ -72,65 +146,134 @@ export class DataExtractor {
           metadata: {
             scraperId,
             version: '1.0.0',
-            processingTimeMs: Date.now() - startTime,
-            browserType: await page.evaluate(() => {
-              const userAgent = navigator.userAgent;
-              if (userAgent.includes('Chrome')) return 'chromium';
-              if (userAgent.includes('Firefox')) return 'firefox';
-              if (userAgent.includes('Safari')) return 'webkit';
-              return 'chromium';
-            }),
-            userAgent: await page.evaluate(() => navigator.userAgent),
-            screenResolution: await page.evaluate(() => `${screen.width}x${screen.height}`),
+            processingTimeMs: totalProcessingTime,
+            browserType: browserMetadata.browserType,
+            userAgent: browserMetadata.userAgent,
+            screenResolution: browserMetadata.screenResolution,
+            viewportSize: browserMetadata.viewportSize,
           },
         };
 
         const result: DataExtractionResult = {
           success: true,
           data: hospitalMetric,
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs: totalProcessingTime,
           elementsFound,
           rawData,
         };
 
+        // Set comprehensive success attributes
         span.setAttributes({
           'extraction.success': true,
-          'extraction.wait_time': validatedData.waitTimeMinutes,
-          'extraction.elements_found': elementsFound.length,
-          'extraction.processing_time_ms': result.processingTimeMs,
+          'extraction.total_processing_time_ms': totalProcessingTime,
+          'extraction.parsing_duration_ms': parsingDuration,
+          'extraction.wait_time_minutes': validatedData.waitTimeMinutes,
+          'extraction.total_patients': validatedData.totalPatients || 0,
+          'extraction.data_freshness_minutes': validatedData.updateDelayMinutes || 0,
         });
 
-        this.observability.logger.info('Data extraction completed successfully', {
+        // Add business context to span
+        const businessContext: { waitTime?: number; patientCount?: number; dataQuality?: number; retryCount?: number } = {
           waitTime: validatedData.waitTimeMinutes,
-          totalPatients: validatedData.totalPatients,
-          processingTime: result.processingTimeMs,
+          dataQuality: this.calculateExtractionQuality(validatedData, elementsFound.length),
+        };
+        if (validatedData.totalPatients !== undefined) {
+          businessContext.patientCount = validatedData.totalPatients;
+        }
+        this.observability.tracer.addBusinessContext(span, businessContext);
+
+        // Production-focused success logging with business data
+        this.observability.logger.info('Data extraction completed successfully', {
+          operation: 'data_extraction_success',
+          business_data: {
+            wait_time_minutes: validatedData.waitTimeMinutes,
+            total_patients: validatedData.totalPatients,
+            update_delay_minutes: validatedData.updateDelayMinutes,
+          },
+          performance: {
+            total_processing_ms: totalProcessingTime,
+            scraping_ms: scrapingDuration,
+            parsing_ms: parsingDuration,
+          },
+          quality: {
+            elements_found: elementsFound.length,
+            validation_passed: true,
+          },
         });
 
         return result;
+        
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown extraction error';
+        const totalProcessingTime = Date.now() - startTime;
+        const extractionError = error instanceof Error ? error : new Error('Unknown extraction error');
+
+        // Properly record exception with comprehensive context
+        this.observability.tracer.recordException(span, extractionError, {
+          'extraction.failure_phase': this.identifyFailurePhase(extractionError),
+          'extraction.total_processing_time_ms': totalProcessingTime,
+          'extraction.url': sourceUrl,
+        });
 
         const result: DataExtractionResult = {
           success: false,
-          error: errorMessage,
-          processingTimeMs: Date.now() - startTime,
+          error: extractionError.message,
+          processingTimeMs: totalProcessingTime,
           elementsFound: [],
         };
 
+        // Set failure attributes
         span.setAttributes({
           'extraction.success': false,
-          'extraction.error': errorMessage,
-          'extraction.processing_time_ms': result.processingTimeMs,
+          'extraction.total_processing_time_ms': totalProcessingTime,
+          'extraction.failure_type': extractionError.name,
         });
 
-        this.observability.recordError('data_extraction_failed', error as Error, {
+        // Use enhanced error recording and logging
+        this.observability.recordError('data_extraction_failed', extractionError, {
           url: sourceUrl,
           scraper_id: scraperId,
+          processing_time_ms: totalProcessingTime,
+          failure_phase: this.identifyFailurePhase(extractionError),
         });
 
         return result;
       }
     });
+  }
+
+  /**
+   * Calculate extraction quality score based on data completeness and processing efficiency
+   */
+  private calculateExtractionQuality(data: ScrapedData, elementsFound: number): number {
+    let score = 0;
+    
+    // Data completeness (60% weight)
+    if (data.waitTimeMinutes !== undefined && data.waitTimeMinutes >= 0) score += 0.3;
+    if (data.totalPatients !== undefined && data.totalPatients >= 0) score += 0.3;
+    
+    // Data freshness (20% weight)
+    if (data.updateDelayMinutes !== undefined && data.updateDelayMinutes < 30) score += 0.2;
+    
+    // Elements found (20% weight) - more elements suggest better extraction
+    if (elementsFound >= 3) score += 0.2;
+    else if (elementsFound >= 2) score += 0.1;
+    
+    return score;
+  }
+
+  /**
+   * Identify the phase where extraction failed for better debugging
+   */
+  private identifyFailurePhase(error: Error): string {
+    const message = error.message.toLowerCase();
+    
+    if (message.includes('page') || message.includes('ready')) return 'page_ready';
+    if (message.includes('scrape') || message.includes('element')) return 'data_scraping';
+    if (message.includes('parse') || message.includes('validation')) return 'data_parsing';
+    if (message.includes('timeout')) return 'timeout';
+    if (message.includes('network')) return 'network';
+    
+    return 'unknown';
   }
 
   private async waitForPageReady(page: Page): Promise<void> {

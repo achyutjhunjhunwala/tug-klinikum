@@ -40,7 +40,7 @@ docker-compose logs -f
 
 ## 🏗️ Architecture
 
-> 📖 **For detailed technical documentation, see [Architecture.md](./Architecture.md)**
+> 📖 **For detailed technical documentation, see [Architecture.md](./docs/Architecture.md)**
 
 ```mermaid
 graph LR
@@ -112,6 +112,8 @@ NODE_ENV=production
 > 🔧 **Complete configuration reference**: Copy `env.example` to `.env` and customize as needed.
 
 ## 📈 Observability
+
+> 📊 **For comprehensive observability documentation, see [Observability.md](./docs/Observability.md)**
 
 All telemetry data flows to **Elasticsearch Cloud** for unified monitoring:
 
@@ -262,7 +264,8 @@ src/
 
 ## 📚 Documentation
 
-- **[📖 Architecture.md](./Architecture.md)**: Comprehensive technical documentation
+- **[📖 Architecture.md](./docs/Architecture.md)**: Comprehensive technical documentation
+- **[📊 Observability.md](./docs/Observability.md)**: Complete observability and monitoring guide
 - **[⚙️ env.example](./env.example)**: Complete configuration reference
 - **[🐳 docker-compose.yml](./docker-compose.yml)**: Production deployment configuration
 

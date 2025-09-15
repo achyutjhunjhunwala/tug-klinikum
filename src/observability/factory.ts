@@ -1,45 +1,21 @@
 import {
-  ObservabilityProvider,
   ObservabilityConfig,
 } from '@/observability/interfaces/observability-provider.interface';
 import { ElasticObservabilityProvider } from '@/observability/implementations/elastic-observability';
 
-export type ObservabilityProviderType = 'elastic' | 'none';
-
 export class ObservabilityFactory {
-  static create(
-    type: ObservabilityProviderType,
-    config: ObservabilityConfig
-  ): ObservabilityProvider | ObservabilityProvider[] {
-    switch (type) {
-      case 'elastic':
-        return new ElasticObservabilityProvider(config);
-
-      case 'none':
-        return []; // Return empty array for no observability
-
-      default:
-        throw new Error(`Unsupported observability provider type: ${type}`);
-    }
+  /**
+   * Creates a single observability provider for Elastic
+   * Simplified from the previous multi-provider approach
+   */
+  static create(config: ObservabilityConfig): ElasticObservabilityProvider {
+    return new ElasticObservabilityProvider(config);
   }
 
-  static createFromEnv(): ObservabilityProvider[] {
+  static createFromEnv(): ElasticObservabilityProvider {
     const config = ObservabilityFactory.createConfigFromEnv();
-    const providerTypes = ObservabilityFactory.getProviderTypesFromEnv();
-
-    const providers: ObservabilityProvider[] = [];
-
-    for (const providerType of providerTypes) {
-      if (providerType === 'none') {
-        // Skip adding any providers for 'none' type
-        continue;
-      } else {
-        const provider = ObservabilityFactory.create(providerType, config) as ObservabilityProvider;
-        providers.push(provider);
-      }
-    }
-
-    return providers;
+    ObservabilityFactory.validateConfig(config);
+    return ObservabilityFactory.create(config);
   }
 
   static createConfigFromEnv(): ObservabilityConfig {
@@ -60,41 +36,53 @@ export class ObservabilityFactory {
         : undefined,
       traceSampling: parseFloat(process.env['OTEL_TRACE_SAMPLING'] || '1.0'),
       metricInterval: parseInt(process.env['OTEL_METRIC_INTERVAL'] || '30000', 10),
-      logLevel: (process.env['LOG_LEVEL'] || 'info') as 'debug' | 'info' | 'warn' | 'error',
+      logLevel: ObservabilityFactory.determineLogLevel(environment),
     };
 
     // Add Elastic config if available
     if (process.env['ELASTICSEARCH_CLOUD_URL'] && process.env['ELASTICSEARCH_API_KEY']) {
       config.elasticConfig = {
-        apmServerUrl: process.env['ELASTICSEARCH_CLOUD_URL']
-          .replace(':9243', ':443')
-          .replace('es.', 'apm.'),
+        apmServerUrl: process.env['ELASTICSEARCH_APM_URL'] || 
+          process.env['ELASTICSEARCH_CLOUD_URL']
+            .replace(':9243', ':443')
+            .replace('es.', 'apm.'),
         apiKey: process.env['ELASTICSEARCH_API_KEY'],
       };
     }
 
-    // Only Elasticsearch observability is supported
-
     return config;
   }
 
-  private static getProviderTypesFromEnv(): ObservabilityProviderType[] {
-    const providers = process.env['OBSERVABILITY_PROVIDERS'] || 'elastic';
-    return providers.split(',').map(p => p.trim() as ObservabilityProviderType);
+  /**
+   * Determines appropriate log level based on environment
+   * Production: Only errors and important business events
+   * Development: More verbose for debugging
+   */
+  private static determineLogLevel(environment: string): 'debug' | 'info' | 'warn' | 'error' {
+    const envLogLevel = process.env['LOG_LEVEL'] as 'debug' | 'info' | 'warn' | 'error';
+    
+    if (envLogLevel) {
+      return envLogLevel;
+    }
+
+    // Environment-based defaults
+    switch (environment) {
+      case 'production':
+        return 'warn'; // Only warnings and errors in production
+      case 'staging':
+        return 'info'; // Business events in staging
+      case 'development':
+      default:
+        return 'debug'; // Verbose logging in development
+    }
   }
 
-  static async initializeProviders(providers: ObservabilityProvider[]): Promise<void> {
-    const initPromises = providers.map(provider => provider.initialize());
-    await Promise.all(initPromises);
+  static async initializeProvider(provider: ElasticObservabilityProvider): Promise<void> {
+    await provider.initialize();
   }
 
-  static async shutdownProviders(providers: ObservabilityProvider[]): Promise<void> {
-    const shutdownPromises = providers.map(provider => provider.shutdown());
-    await Promise.all(shutdownPromises);
-  }
-
-  static getSupportedTypes(): ObservabilityProviderType[] {
-    return ['elastic', 'none'];
+  static async shutdownProvider(provider: ElasticObservabilityProvider): Promise<void> {
+    await provider.shutdown();
   }
 
   static validateConfig(config: ObservabilityConfig): void {
@@ -110,13 +98,14 @@ export class ObservabilityFactory {
       throw new Error('OTEL endpoint is required');
     }
 
-    // Validate provider-specific configs
     if (config.elasticConfig) {
       if (!config.elasticConfig.apmServerUrl || !config.elasticConfig.apiKey) {
         throw new Error('Elastic APM server URL and API key are required');
       }
     }
 
-    // Only Elasticsearch observability is supported
+    if (config.traceSampling !== undefined && (config.traceSampling < 0 || config.traceSampling > 1)) {
+      throw new Error('Trace sampling must be between 0 and 1');
+    }
   }
 }

@@ -58,6 +58,7 @@ export const HospitalMetricSchema = z.object({
     browserType: z.enum(['chromium', 'firefox', 'webkit']).optional(),
     userAgent: z.string().optional(),
     screenResolution: z.string().optional(),
+    viewportSize: z.string().optional(),
     errorMessage: z.string().optional(),
   }),
 });

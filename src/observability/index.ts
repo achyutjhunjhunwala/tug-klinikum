@@ -17,4 +17,3 @@ export { ElasticObservabilityProvider } from './implementations/elastic-observab
 
 // Factory
 export { ObservabilityFactory } from './factory';
-export type { ObservabilityProviderType } from './factory';
