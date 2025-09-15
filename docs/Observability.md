@@ -254,6 +254,45 @@ tracer.addBusinessContext(span, {
 });
 ```
 
+### APM Transaction Types
+
+All traces are automatically categorized with proper transaction types for better organization in Elasticsearch APM:
+
+| Transaction Type | Operations | Description | Examples |
+|-----------------|------------|-------------|----------|
+| **`app-lifecycle`** | Application startup/shutdown | Core application lifecycle events | `initialize_scraper`, `startup_telemetry_check`, `graceful_shutdown` |
+| **`scraping`** | Web scraping operations | All browser automation and data extraction | `data_extraction`, `scrape_page_data`, `browser_initialize` |
+| **`database`** | Elasticsearch operations | Database connections and data operations | `db_insert`, `db_query`, `database_health_check` |
+| **`health-check`** | Health monitoring | Application and component health checks | `health_check_full`, `scraper_health_check` |
+| **`scheduling`** | Job management | Cron jobs and task scheduling | `schedule_jobs`, `cron_job_execution`, `job_runner_initialize` |
+| **`retry`** | Retry operations | Failed operation retries | `retry_hospital_scraping`, `retry_database_connection` |
+| **`http`** | External requests | HTTP calls and network operations | `http_request`, `api_fetch` |
+| **`custom`** | Application-specific | Other business-specific operations | Custom spans not covered above |
+
+#### APM Benefits
+
+With proper transaction types, you can:
+
+```typescript
+// Filter by transaction type in Kibana APM
+GET apm-*/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "term": { "service.name": "hospital-scraper" } },
+        { "term": { "transaction.type": "scraping" } }
+      ]
+    }
+  }
+}
+```
+
+- **Service Overview**: Clean categorization instead of "unknown"
+- **Transaction Analysis**: Group related operations
+- **Performance Monitoring**: Focus on specific operation types
+- **Alerting**: Create type-specific alerts
+
 ---
 
 ## 📝 Logging Strategy
