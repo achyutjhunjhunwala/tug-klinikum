@@ -15,7 +15,7 @@ export class PinoLogger implements ObservabilityLogger {
     logLevel: 'debug' | 'info' | 'warn' | 'error' = 'info'
   ) {
     this.isProduction = environment === 'production';
-    
+
     // Ensure logs directory exists
     const logsDir = path.join(process.cwd(), 'logs');
     if (!fs.existsSync(logsDir)) {
@@ -25,40 +25,43 @@ export class PinoLogger implements ObservabilityLogger {
     // Create log file path
     const logFile = path.join(logsDir, `${serviceName}.log`);
 
-    this.logger = pino({
-      level: logLevel,
-      base: {
-        // Use ECS-compliant service field structure
-        service: {
-          name: serviceName,
-          version: serviceVersion,
+    this.logger = pino(
+      {
+        level: logLevel,
+        base: {
+          // Use ECS-compliant service field structure
+          service: {
+            name: serviceName,
+            version: serviceVersion,
+          },
+          host: {
+            name: require('os').hostname(),
+          },
+          process: {
+            pid: process.pid,
+          },
+          // Use app_* prefix to avoid conflicts with ECS fields
+          app_labels: {
+            environment,
+            application: serviceName,
+          },
         },
-        host: {
-          name: require('os').hostname(),
-        },
-        process: {
-          pid: process.pid,
-        },
-        // Use app_* prefix to avoid conflicts with ECS fields
-        app_labels: {
-          environment,
-          application: serviceName,
+        timestamp: () => `,\"@timestamp\":\"${new Date().toISOString()}\"`,
+        messageKey: 'message', // Use 'message' instead of 'msg'
+        formatters: {
+          level: label => {
+            return {
+              level: label,
+              'log.level': label, // Add log.level for Elastic compatibility
+            };
+          },
         },
       },
-      timestamp: () => `,\"@timestamp\":\"${new Date().toISOString()}\"`,
-      messageKey: 'message', // Use 'message' instead of 'msg'
-      formatters: {
-        level: (label) => {
-          return { 
-            level: label,
-            'log.level': label  // Add log.level for Elastic compatibility
-          };
-        },
-      },
-    }, pino.multistream([
-      { stream: process.stdout }, // Console output
-      { stream: pino.destination(logFile) } // File output for Filebeat
-    ]));
+      pino.multistream([
+        { stream: process.stdout }, // Console output
+        { stream: pino.destination(logFile) }, // File output for Filebeat
+      ])
+    );
   }
 
   /**
@@ -92,15 +95,18 @@ export class PinoLogger implements ObservabilityLogger {
    */
   error(message: string, error?: Error, context?: Record<string, any>): void {
     if (error) {
-      this.logger.error({ 
-        ...this.bindings, 
-        ...context,
-        err: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        }
-      }, message);
+      this.logger.error(
+        {
+          ...this.bindings,
+          ...context,
+          err: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          },
+        },
+        message
+      );
     } else {
       this.logger.error({ ...this.bindings, ...context }, message);
     }
@@ -141,7 +147,11 @@ export class PinoLogger implements ObservabilityLogger {
     }
   }
 
-  logScrapingSuccess(url: string, duration: number, data: { waitTime?: number, patientCount?: number, retryCount?: number }): void {
+  logScrapingSuccess(
+    url: string,
+    duration: number,
+    data: { waitTime?: number; patientCount?: number; retryCount?: number }
+  ): void {
     // Always log successful business operations
     this.info('Scraping completed successfully', {
       operation: 'scraping_success',
@@ -179,7 +189,12 @@ export class PinoLogger implements ObservabilityLogger {
   /**
    * Log database operations - focused on performance and reliability
    */
-  logDatabaseOperation(operation: string, success: boolean, duration: number, recordCount?: number): void {
+  logDatabaseOperation(
+    operation: string,
+    success: boolean,
+    duration: number,
+    recordCount?: number
+  ): void {
     const context = {
       operation_type: 'database_operation',
       db_operation: operation,
@@ -317,7 +332,11 @@ export class PinoLogger implements ObservabilityLogger {
     }
 
     // Database-related errors
-    if (message.includes('elasticsearch') || message.includes('connection') || name.includes('connection')) {
+    if (
+      message.includes('elasticsearch') ||
+      message.includes('connection') ||
+      name.includes('connection')
+    ) {
       return 'database';
     }
 

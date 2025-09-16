@@ -1,8 +1,8 @@
 import 'dotenv/config';
-import { 
-  validateAllConfigurations, 
+import {
+  validateAllConfigurations,
   validateRequiredEnvironmentVariables,
-  getConfigurationSummary 
+  getConfigurationSummary,
 } from '@/config';
 import { DatabaseFactory } from '@/database';
 import { ObservabilityFactory } from '@/observability';
@@ -75,7 +75,6 @@ class HospitalScraperApplication {
 
       // Record successful startup metric
       this.obs.metrics.recordHeartbeat({ phase: 'startup_complete' });
-
     } catch (error) {
       console.error('❌ Failed to start Hospital Scraper Application:', error);
 
@@ -91,10 +90,10 @@ class HospitalScraperApplication {
 
   private async validateEnvironment(): Promise<void> {
     console.log('🔍 Validating environment...');
-    
+
     validateRequiredEnvironmentVariables();
     this.configs = validateAllConfigurations();
-    
+
     console.log('✅ Environment validation completed');
   }
 
@@ -107,28 +106,30 @@ class HospitalScraperApplication {
     console.log('✅ Observability initialized (Elastic provider)');
 
     // Emit a startup span and heartbeat metric to verify pipelines
-    await this.observabilityProvider!.tracer.wrapAsync('startup_telemetry_check', async (span) => {
+    await this.observabilityProvider!.tracer.wrapAsync('startup_telemetry_check', async span => {
       span.setAttributes({
         'startup.phase': 'post_observability_init',
         'startup.timestamp': Date.now(),
       });
 
       this.observabilityProvider!.metrics.recordHeartbeat({ phase: 'post_init' });
-      this.observabilityProvider!.logger.info('Observability pipeline verified with startup heartbeat');
+      this.observabilityProvider!.logger.info(
+        'Observability pipeline verified with startup heartbeat'
+      );
     });
   }
 
   private async initializeDatabaseEarly(): Promise<void> {
     console.log('🔗 Initializing database (before observability)...');
-      
+
     this.database = DatabaseFactory.createFromEnv();
     await this.database.connect();
-    
+
     const health = await this.database.healthCheck();
     if (!health.connected) {
       throw new Error(`Database connection failed: ${health.lastError}`);
     }
-      
+
     console.log('✅ Database initialized successfully:', {
       type: this.configs?.database?.type || 'elasticsearch',
       connected: health.connected,
@@ -156,9 +157,8 @@ class HospitalScraperApplication {
     this.obs.recordHealthCheck('database', health.connected, health.responseTimeMs);
   }
 
-
   private async initializeScraper(): Promise<void> {
-    return this.obs.tracer.wrapAsync('initialize_scraper', async (span) => {
+    return this.obs.tracer.wrapAsync('initialize_scraper', async span => {
       this.obs.logger.info('Initializing scraper...');
 
       if (this.configs) {
@@ -167,10 +167,7 @@ class HospitalScraperApplication {
           'scraper.browser_type': this.configs.scraping.browser.type,
         });
 
-        this.scraper = new PlaywrightScraper(
-          this.configs.scraping,
-          this.obs
-        );
+        this.scraper = new PlaywrightScraper(this.configs.scraping, this.obs);
       }
 
       if (this.scraper) {
@@ -200,7 +197,7 @@ class HospitalScraperApplication {
   }
 
   private async initializeScheduler(): Promise<void> {
-    return this.obs.tracer.wrapAsync('initialize_scheduler', async (span) => {
+    return this.obs.tracer.wrapAsync('initialize_scheduler', async span => {
       this.obs.logger.info('Initializing scheduler...');
 
       this.cronManager = new CronManager(this.obs);
@@ -235,20 +232,18 @@ class HospitalScraperApplication {
   private async initializeHealthChecker(): Promise<void> {
     this.obs.logger.info('Initializing health checker...');
 
-    this.healthChecker = new HealthChecker(
-      this.database!,
-      this.scraper!,
-      this.obs,
-      this.jobRunner
-    );
+    this.healthChecker = new HealthChecker(this.database!, this.scraper!, this.obs, this.jobRunner);
 
     // Perform initial health check
     const initialHealth = await this.healthChecker.performHealthCheck();
 
     if (initialHealth.status === 'unhealthy') {
-      this.obs.logger.warn('Initial health check reported unhealthy status, but continuing startup', {
-        healthStatus: initialHealth
-      });
+      this.obs.logger.warn(
+        'Initial health check reported unhealthy status, but continuing startup',
+        {
+          healthStatus: initialHealth,
+        }
+      );
 
       // Record unhealthy components
       Object.entries(initialHealth.components).forEach(([component, health]) => {
@@ -259,7 +254,11 @@ class HospitalScraperApplication {
     } else {
       // Record healthy components
       Object.entries(initialHealth.components).forEach(([component, health]) => {
-        this.obs.recordHealthCheck(component, health.status === 'healthy', health.responseTime || 0);
+        this.obs.recordHealthCheck(
+          component,
+          health.status === 'healthy',
+          health.responseTime || 0
+        );
       });
     }
 
@@ -270,7 +269,7 @@ class HospitalScraperApplication {
   }
 
   private async startHealthEndpoint(): Promise<void> {
-    return this.obs.tracer.wrapAsync('start_health_endpoint', async (span) => {
+    return this.obs.tracer.wrapAsync('start_health_endpoint', async span => {
       this.obs.logger.info('Starting health endpoint...');
 
       if (this.configs) {
@@ -278,10 +277,7 @@ class HospitalScraperApplication {
           'health_endpoint.port': this.configs.app.port,
         });
 
-        this.healthEndpoint = new HealthEndpoint(
-          this.healthChecker!,
-          this.configs.app.port
-        );
+        this.healthEndpoint = new HealthEndpoint(this.healthChecker!, this.configs.app.port);
       }
 
       if (this.healthEndpoint) {
@@ -298,7 +294,7 @@ class HospitalScraperApplication {
   }
 
   private async scheduleJobs(): Promise<void> {
-    return this.obs.tracer.wrapAsync('schedule_jobs', async (span) => {
+    return this.obs.tracer.wrapAsync('schedule_jobs', async span => {
       this.obs.logger.info('Scheduling jobs...');
 
       if (this.configs) {
@@ -361,7 +357,6 @@ class HospitalScraperApplication {
 
       // Start graceful shutdown tracing if observability is available
       const shutdownOperation = async () => {
-
         if (this.observabilityProvider) {
           this.observabilityProvider.logger.info('Starting graceful shutdown', { signal });
         }
@@ -425,7 +420,6 @@ class HospitalScraperApplication {
           clearTimeout(shutdownTimer);
           console.log('✅ Graceful shutdown completed');
           process.exit(0);
-
         } catch (error) {
           if (this.observabilityProvider) {
             this.observabilityProvider.recordError('shutdown_error', error as Error, {
@@ -441,7 +435,7 @@ class HospitalScraperApplication {
       };
 
       if (this.observabilityProvider) {
-        await this.observabilityProvider.tracer.wrapAsync('graceful_shutdown', async (span) => {
+        await this.observabilityProvider.tracer.wrapAsync('graceful_shutdown', async span => {
           span.setAttributes({
             'shutdown.signal': signal,
             'shutdown.start_time': Date.now(),
@@ -471,7 +465,7 @@ class HospitalScraperApplication {
     process.on('SIGUSR2', () => shutdown('SIGUSR2')); // For nodemon
 
     // Handle uncaught exceptions
-    process.on('uncaughtException', (error) => {
+    process.on('uncaughtException', error => {
       console.error('💥 Uncaught Exception:', error);
       if (this.observabilityProvider) {
         this.observabilityProvider.recordError('uncaught_exception', error, {
@@ -496,7 +490,7 @@ class HospitalScraperApplication {
 // Start the application
 if (require.main === module) {
   const app = new HospitalScraperApplication();
-  app.start().catch((error) => {
+  app.start().catch(error => {
     console.error('💥 Failed to start application:', error);
     process.exit(1);
   });

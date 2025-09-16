@@ -14,8 +14,8 @@ export interface ScrapingConfig {
 
 export interface ScrapingResult {
   success: boolean;
-  data?: CreateHospitalMetric | undefined;
-  error?: string | undefined;
+  data?: CreateHospitalMetric;
+  error?: string;
   metrics: {
     totalTime: number;
     pageLoadTime: number;
@@ -27,7 +27,7 @@ export interface ScrapingResult {
     timestamp: Date;
     scraperId: string;
     browserType: string;
-    userAgent?: string | undefined;
+    userAgent?: string;
   };
 }
 
@@ -86,23 +86,26 @@ export class PlaywrightScraper {
 
       // Log scraping start with production-focused logging
       this.observability.logger.logScrapingStart(this.config.targetUrl, correlationId);
-      
+
       // Record scraping attempt with enhanced metrics
       this.observability.metrics.recordScrapingAttempt(this.config.targetUrl);
 
       try {
         // Execute scraping with retry logic in a child span
-        const retryResult = await this.observability.tracer.wrapAsync('scraping_with_retry', async (retrySpan) => {
-          retrySpan.setAttributes({
-            'retry.operation': 'hospital_scraping',
-            'retry.target': this.config.targetUrl,
-          });
-          
-          return await this.retryHandler.executeNetworkOperation(
-            () => this.performScraping(),
-            'hospital_scraping'
-          );
-        });
+        const retryResult = await this.observability.tracer.wrapAsync(
+          'scraping_with_retry',
+          async retrySpan => {
+            retrySpan.setAttributes({
+              'retry.operation': 'hospital_scraping',
+              'retry.target': this.config.targetUrl,
+            });
+
+            return await this.retryHandler.executeNetworkOperation(
+              () => this.performScraping(),
+              'hospital_scraping'
+            );
+          }
+        );
 
         const totalTime = Date.now() - startTime;
         const retryCount = retryResult.attempts - 1;
@@ -112,9 +115,13 @@ export class PlaywrightScraper {
           const waitTime = retryResult.data.data?.waitTimeMinutes;
           const patientCount = retryResult.data.data?.totalPatients;
           const dataAge = retryResult.data.data?.updateDelayMinutes || 0;
-          
+
           // Calculate data quality score (simple heuristic)
-          const qualityData: { waitTimeMinutes?: number; totalPatients?: number; updateDelayMinutes?: number } = {};
+          const qualityData: {
+            waitTimeMinutes?: number;
+            totalPatients?: number;
+            updateDelayMinutes?: number;
+          } = {};
           if (retryResult.data.data?.waitTimeMinutes !== undefined) {
             qualityData.waitTimeMinutes = retryResult.data.data.waitTimeMinutes;
           }
@@ -128,7 +135,7 @@ export class PlaywrightScraper {
 
           const result: ScrapingResult = {
             success: true,
-            data: retryResult.data.data,
+            data: retryResult.data.data!,
             metrics: {
               totalTime,
               pageLoadTime: retryResult.data.pageLoadTime,
@@ -140,7 +147,7 @@ export class PlaywrightScraper {
               timestamp: new Date(),
               scraperId: this.config.scraperId,
               browserType: this.config.browser.type,
-              userAgent: retryResult.data.userAgent,
+              ...(retryResult.data.userAgent && { userAgent: retryResult.data.userAgent }),
             },
           };
 
@@ -154,7 +161,12 @@ export class PlaywrightScraper {
           });
 
           // Add business context to span
-          const businessContext: { waitTime?: number; patientCount?: number; dataQuality?: number; retryCount?: number } = {
+          const businessContext: {
+            waitTime?: number;
+            patientCount?: number;
+            dataQuality?: number;
+            retryCount?: number;
+          } = {
             dataQuality,
             retryCount,
           };
@@ -163,7 +175,9 @@ export class PlaywrightScraper {
           this.observability.tracer.addBusinessContext(span, businessContext);
 
           // Use production-focused logging with business data
-          const loggingData: { waitTime?: number; patientCount?: number; retryCount?: number } = { retryCount };
+          const loggingData: { waitTime?: number; patientCount?: number; retryCount?: number } = {
+            retryCount,
+          };
           if (waitTime !== undefined) loggingData.waitTime = waitTime;
           if (patientCount !== undefined) loggingData.patientCount = patientCount;
           this.observability.logger.logScrapingSuccess(
@@ -174,8 +188,8 @@ export class PlaywrightScraper {
 
           // Record comprehensive business and technical metrics
           this.observability.metrics.recordScrapingSuccess(
-            this.config.targetUrl, 
-            totalTime / 1000, 
+            this.config.targetUrl,
+            totalTime / 1000,
             retryCount
           );
 
@@ -197,12 +211,11 @@ export class PlaywrightScraper {
           );
 
           return result;
-          
         } else {
           // Handle scraping failure
           const errorMessage = retryResult.error?.message || 'Unknown scraping error';
           const error = retryResult.error || new Error(errorMessage);
-          
+
           const result: ScrapingResult = {
             success: false,
             error: errorMessage,
@@ -252,7 +265,6 @@ export class PlaywrightScraper {
 
           return result;
         }
-        
       } catch (error) {
         const totalTime = Date.now() - startTime;
         const errorMessage = error instanceof Error ? error.message : 'Unexpected scraping error';
@@ -304,12 +316,16 @@ export class PlaywrightScraper {
   /**
    * Calculate data quality score based on completeness and reasonableness
    */
-  private calculateDataQuality(data: { waitTimeMinutes?: number; totalPatients?: number; updateDelayMinutes?: number } | undefined): number {
+  private calculateDataQuality(
+    data:
+      | { waitTimeMinutes?: number; totalPatients?: number; updateDelayMinutes?: number }
+      | undefined
+  ): number {
     if (!data) return 0;
-    
+
     let score = 0;
     let factors = 0;
-    
+
     // Wait time reasonableness (0-300 minutes is reasonable)
     if (data.waitTimeMinutes !== undefined) {
       factors++;
@@ -317,7 +333,7 @@ export class PlaywrightScraper {
         score += 0.4; // 40% weight for reasonable wait time
       }
     }
-    
+
     // Patient count reasonableness (0-100 is reasonable for ER)
     const patientCount = data.totalPatients;
     if (patientCount !== undefined) {
@@ -326,7 +342,7 @@ export class PlaywrightScraper {
         score += 0.3; // 30% weight for reasonable patient count
       }
     }
-    
+
     // Data freshness (< 60 minutes is good)
     if (data.updateDelayMinutes !== undefined) {
       factors++;
@@ -334,7 +350,7 @@ export class PlaywrightScraper {
         score += 0.3; // 30% weight for fresh data
       }
     }
-    
+
     return factors > 0 ? score : 0;
   }
 

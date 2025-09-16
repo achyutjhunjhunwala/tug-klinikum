@@ -13,6 +13,9 @@ export type {
 // Database implementations
 export { ElasticsearchClient } from './implementations/elasticsearch-client';
 
+// Templates and policies
+export * from './elasticsearch-templates';
+
 // Factory
 export { DatabaseFactory } from './factory';
 

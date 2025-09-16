@@ -1,6 +1,6 @@
 // Main scraper exports
 export { PlaywrightScraper } from './playwright-scraper';
-export type { ScrapingConfig, ScrapingResult } from './playwright-scraper';
+export type { ScrapingConfig } from './playwright-scraper';
 
 // Browser management
 export { BrowserManager } from './browser-manager';

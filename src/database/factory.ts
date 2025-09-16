@@ -12,10 +12,11 @@ export class DatabaseFactory {
     return new ElasticsearchClient(config);
   }
 
+
   static createFromEnv(): DatabaseClient {
     const url = process.env['ELASTICSEARCH_CLOUD_URL'];
     const apiKey = process.env['ELASTICSEARCH_API_KEY'];
-    
+
     if (!url || !apiKey) {
       throw new Error('ELASTICSEARCH_CLOUD_URL and ELASTICSEARCH_API_KEY are required');
     }
@@ -30,6 +31,7 @@ export class DatabaseFactory {
       retries: parseInt(process.env['DB_RETRIES'] || '3', 10),
     });
   }
+
 
   static async testConnection(config: DatabaseConnectionConfig): Promise<boolean> {
     const client = DatabaseFactory.create(config);

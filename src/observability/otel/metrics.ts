@@ -1,5 +1,6 @@
 import { metrics } from '@opentelemetry/api';
-import type { Meter, Counter, Histogram, Gauge } from '@opentelemetry/api';import { ObservabilityMetrics } from '@/observability/interfaces/observability-provider.interface';
+import type { Meter, Counter, Histogram, Gauge } from '@opentelemetry/api';
+import { ObservabilityMetrics } from '@/observability/interfaces/observability-provider.interface';
 
 export class OtelMetrics implements ObservabilityMetrics {
   private readonly meter: Meter;
@@ -94,10 +95,13 @@ export class OtelMetrics implements ObservabilityMetrics {
       advice: { explicitBucketBoundaries: [0.5, 1, 2, 5, 10] }, // Browser startup performance
     });
 
-    this.browserNavigationDuration = this.meter.createHistogram('browser_navigation_duration_seconds', {
-      description: 'Time to navigate to target page in seconds',
-      advice: { explicitBucketBoundaries: [1, 3, 5, 10, 20, 30] }, // Page load performance
-    });
+    this.browserNavigationDuration = this.meter.createHistogram(
+      'browser_navigation_duration_seconds',
+      {
+        description: 'Time to navigate to target page in seconds',
+        advice: { explicitBucketBoundaries: [1, 3, 5, 10, 20, 30] }, // Page load performance
+      }
+    );
 
     this.browserMemoryUsage = this.meter.createGauge('browser_memory_usage_bytes', {
       description: 'Browser memory usage in bytes',
@@ -177,18 +181,33 @@ export class OtelMetrics implements ObservabilityMetrics {
   }
 
   // === BUSINESS METRIC RECORDING ===
-  recordHospitalData(waitTime: number, patientCount: number, dataAge: number, qualityScore: number): void {
-    this.hospitalWaitTime.record(waitTime);
-    this.hospitalPatientCount.record(patientCount);
-    this.dataFreshnessMinutes.record(dataAge);
-    this.dataQualityScore.record(qualityScore);
+  recordHospitalData(
+    waitTime: number,
+    patientCount: number,
+    dataAge: number,
+    qualityScore: number,
+    labels?: { department?: 'adult' | 'children'; [key: string]: any }
+  ): void {
+    const baseLabels = labels || {};
+    const department = baseLabels.department || 'unknown';
+
+    // Enhanced labels with department awareness
+    const metricLabels = {
+      ...baseLabels,
+      department,
+    };
+
+    this.hospitalWaitTime.record(waitTime, metricLabels);
+    this.hospitalPatientCount.record(patientCount, metricLabels);
+    this.dataFreshnessMinutes.record(dataAge, metricLabels);
+    this.dataQualityScore.record(qualityScore, metricLabels);
   }
 
   // === SCRAPING METRIC RECORDING ===
   recordScrapingAttempt(source: string, attemptNumber: number = 1): void {
-    this.scrapingAttempts.add(1, { 
-      source, 
-      attempt_type: attemptNumber === 1 ? 'initial' : 'retry' 
+    this.scrapingAttempts.add(1, {
+      source,
+      attempt_type: attemptNumber === 1 ? 'initial' : 'retry',
     });
   }
 
@@ -198,7 +217,12 @@ export class OtelMetrics implements ObservabilityMetrics {
     this.scrapingRetryCount.record(retryCount, { source, outcome: 'success' });
   }
 
-  recordScrapingFailure(source: string, duration: number, errorType: string, retryCount: number): void {
+  recordScrapingFailure(
+    source: string,
+    duration: number,
+    errorType: string,
+    retryCount: number
+  ): void {
     this.scrapingFailures.add(1, { source, error_type: errorType });
     this.scrapingDuration.record(duration, { source, status: 'failure' });
     this.scrapingRetryCount.record(retryCount, { source, outcome: 'failure' });
@@ -211,9 +235,9 @@ export class OtelMetrics implements ObservabilityMetrics {
   }
 
   recordBrowserNavigation(duration: number, targetHost: string, success: boolean): void {
-    this.browserNavigationDuration.record(duration, { 
-      target_host: targetHost, 
-      success: success.toString() 
+    this.browserNavigationDuration.record(duration, {
+      target_host: targetHost,
+      success: success.toString(),
     });
   }
 
@@ -223,25 +247,51 @@ export class OtelMetrics implements ObservabilityMetrics {
   }
 
   // === DATABASE METRIC RECORDING ===
-  recordDatabaseOperation(operation: string, success: boolean, duration: number): void {
+  recordDatabaseOperation(
+    operation: string,
+    success: boolean,
+    duration: number,
+    labels?: Record<string, any>
+  ): void {
+    const baseLabels = labels || {};
+    const metricLabels = {
+      operation,
+      success: success.toString(),
+      ...baseLabels,
+    };
+
     if (success) {
-      this.recordsInserted.add(1, { operation });
+      this.recordsInserted.add(1, metricLabels);
     } else {
-      this.dbOperationErrors.add(1, { operation, error_type: 'operation_failed' });
+      this.dbOperationErrors.add(1, { ...metricLabels, error_type: 'operation_failed' });
       this.errorsByCategory.add(1, { category: 'database', error_type: 'operation_failed' });
     }
-    this.dbOperationDuration.record(duration, { 
-      operation, 
-      success: success.toString() 
-    });
+
+    // Record duration
+    this.dbOperationDuration.record(duration, metricLabels);
+  }
+
+  recordJobExecution(jobType: string, duration: number, success: boolean): void {
+    const labels = {
+      job_type: jobType,
+      success: success.toString(),
+    };
+
+    if (success) {
+      this.scrapingSuccess.add(1, labels);
+    } else {
+      this.scrapingFailures.add(1, { ...labels, error_type: 'job_execution_failed' });
+    }
+
+    this.scrapingDuration.record(duration, labels);
   }
 
   recordDatabaseHealth(healthy: boolean, responseTime?: number): void {
     this.dbConnectionHealth.record(healthy ? 1 : 0);
     if (responseTime !== undefined) {
-      this.dbOperationDuration.record(responseTime, { 
-        operation: 'health_check', 
-        success: healthy.toString() 
+      this.dbOperationDuration.record(responseTime, {
+        operation: 'health_check',
+        success: healthy.toString(),
       });
     }
   }
@@ -256,6 +306,7 @@ export class OtelMetrics implements ObservabilityMetrics {
   }
 
   // === CONNECTIVITY VERIFICATION ===
+
   recordHeartbeat(attributes?: Record<string, string>): void {
     this.heartbeat.add(1, { source: 'manual', ...attributes });
   }
