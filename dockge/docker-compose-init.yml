@@ -202,6 +202,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SCRAPING_INTERVAL=${SCRAPING_INTERVAL:-30}
       - SCRAPING_TIMEZONE=${SCRAPING_TIMEZONE:-Europe/Berlin}
+      - ADULT_TARGET_URL=${ADULT_TARGET_URL:-https://www.vivantes.de/klinikum-im-friedrichshain/rettungsstelle}
+      - CHILDREN_TARGET_URL=${CHILDREN_TARGET_URL:-https://www.vivantes.de/klinikum-im-friedrichshain/kinder-jugendmedizin/kinderrettungsstelle}
       - OTEL_TRACE_SAMPLING=${OTEL_TRACE_SAMPLING:-1.0}
       - OTEL_METRIC_INTERVAL=${OTEL_METRIC_INTERVAL:-30000}
       - PROXY_SERVER=${PROXY_SERVER:-}

@@ -1,13 +1,5 @@
-import { 
-  HospitalMetric, 
-  CreateHospitalMetric
-} from '@/models/hospital-metric';
-import { 
-  QueryFilter, 
-  DatabaseHealth,
-  BulkInsertResult,
-  QueryResult
-} from './query-types';
+import { HospitalMetric, CreateHospitalMetric } from '@/models/hospital-metric';
+import { QueryFilter, DatabaseHealth, BulkInsertResult, QueryResult } from './query-types';
 
 export interface DatabaseClient {
   /**
@@ -21,21 +13,30 @@ export interface DatabaseClient {
   /**
    * Basic CRUD Operations
    */
-  insert(data: CreateHospitalMetric): Promise<string>;
+  insert(data: Omit<CreateHospitalMetric, 'department'>): Promise<string>;
   bulkInsert(data: CreateHospitalMetric[]): Promise<BulkInsertResult>;
 
   /**
    * Query Operations
    */
-  query(filters: QueryFilter): Promise<QueryResult<HospitalMetric>>;
-
+  query(
+    filters?: QueryFilter,
+    limit?: number,
+    offset?: number
+  ): Promise<QueryResult<HospitalMetric>>;
 
   /**
    * Maintenance Operations
    */
-  createIndex(): Promise<void>;
-  cleanup(olderThan: Date): Promise<number>;
-
+  createIndex(indexName?: string): Promise<void>;
+  cleanup(olderThan?: Date): Promise<void | number>;
+  
+  /**
+   * Production Setup Operations
+   */
+  setupIndexTemplates(): Promise<void>;
+  setupILMPolicies(): Promise<void>;
+  ensureProductionInfrastructure(): Promise<void>;
 }
 
 export interface DatabaseConnectionConfig {

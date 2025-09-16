@@ -1,4 +1,12 @@
-import { Browser, BrowserContext, Page, chromium, firefox, webkit, LaunchOptions } from 'playwright';
+import {
+  Browser,
+  BrowserContext,
+  Page,
+  chromium,
+  firefox,
+  webkit,
+  LaunchOptions,
+} from 'playwright';
 import { ObservabilityProvider } from '@/observability';
 
 export type BrowserType = 'chromium' | 'firefox' | 'webkit';

@@ -108,10 +108,10 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
 
       // Start SDK
       this.sdk.start();
-      
+
       // Wait for initialization
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       this.initialized = true;
 
       // Log startup with comprehensive context
@@ -131,7 +131,6 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
 
       // Set up graceful shutdown handlers
       this.setupGracefulShutdown();
-
     } catch (error) {
       this.logger.error('Failed to initialize observability provider', error as Error);
       throw error;
@@ -145,13 +144,12 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
 
     try {
       this.logger.logApplicationShutdown();
-      
+
       // Allow final traces/metrics to be exported
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       await this.sdk.shutdown();
       this.initialized = false;
-      
     } catch (error) {
       this.logger.error('Error during observability shutdown', error as Error);
       throw error;
@@ -186,9 +184,14 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
   /**
    * Record health check with comprehensive context
    */
-  recordHealthCheck(component: string, healthy: boolean, responseTime: number, context?: Record<string, any>): void {
+  recordHealthCheck(
+    component: string,
+    healthy: boolean,
+    responseTime: number,
+    context?: Record<string, any>
+  ): void {
     this.logger.logHealthCheck(component, healthy, responseTime);
-    
+
     // Record component-specific metrics
     switch (component) {
       case 'database':
@@ -208,7 +211,7 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
 
     // Create trace for health check failures
     if (!healthy) {
-      this.tracer.wrapSync(`health_check_failed_${component}`, (span) => {
+      this.tracer.wrapSync(`health_check_failed_${component}`, span => {
         span.setAttributes({
           'health.component': component,
           'health.status': 'unhealthy',
@@ -225,12 +228,12 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
    */
   recordError(operation: string, error: Error, context?: Record<string, any>): void {
     const errorCategory = this.categorizeError(error);
-    
+
     this.logger.error(`Operation failed: ${operation}`, error, context);
     this.metrics.recordError(errorCategory, error.name);
 
     // Create error trace with comprehensive context
-    this.tracer.wrapSync(`error_${operation}`, (span) => {
+    this.tracer.wrapSync(`error_${operation}`, span => {
       span.recordException(error);
       span.setAttributes({
         'error.operation': operation,
@@ -247,9 +250,14 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
   /**
    * Record successful operation with metrics and optional tracing
    */
-  recordOperation(operation: string, duration: number, success: boolean, context?: Record<string, any>): void {
+  recordOperation(
+    operation: string,
+    duration: number,
+    success: boolean,
+    context?: Record<string, any>
+  ): void {
     const category = this.categorizeOperation(operation);
-    
+
     this.logger.info(`Operation ${success ? 'completed' : 'failed'}: ${operation}`, {
       operation,
       category,
@@ -262,9 +270,18 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
     switch (category) {
       case 'scraping':
         if (success) {
-          this.metrics.recordScrapingSuccess('default', duration / 1000, context?.['retryCount'] || 0);
+          this.metrics.recordScrapingSuccess(
+            'default',
+            duration / 1000,
+            context?.['retryCount'] || 0
+          );
         } else {
-          this.metrics.recordScrapingFailure('default', duration / 1000, 'operation_failed', context?.['retryCount'] || 0);
+          this.metrics.recordScrapingFailure(
+            'default',
+            duration / 1000,
+            'operation_failed',
+            context?.['retryCount'] || 0
+          );
         }
         break;
       case 'database':
@@ -274,7 +291,11 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
         if (operation.includes('launch')) {
           this.metrics.recordBrowserLaunch(duration / 1000, context?.['browserType'] || 'chromium');
         } else if (operation.includes('navigation')) {
-          this.metrics.recordBrowserNavigation(duration / 1000, context?.['targetHost'] || 'unknown', success);
+          this.metrics.recordBrowserNavigation(
+            duration / 1000,
+            context?.['targetHost'] || 'unknown',
+            success
+          );
         }
         break;
     }
@@ -283,10 +304,15 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
   /**
    * Record performance issue when operations exceed thresholds
    */
-  recordPerformanceIssue(operation: string, duration: number, threshold: number, context?: Record<string, any>): void {
+  recordPerformanceIssue(
+    operation: string,
+    duration: number,
+    threshold: number,
+    context?: Record<string, any>
+  ): void {
     this.logger.logPerformanceIssue(operation, duration, threshold);
-    
-    this.tracer.wrapSync(`performance_issue_${operation}`, (span) => {
+
+    this.tracer.wrapSync(`performance_issue_${operation}`, span => {
       span.setAttributes({
         'performance.operation': operation,
         'performance.duration_ms': duration,
@@ -315,12 +341,7 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
   }
 
   private getEnabledInstrumentations(): string[] {
-    return [
-      'http',
-      'dns', 
-      'net',
-      ...(this.config.environment !== 'production' ? ['fs'] : [])
-    ];
+    return ['http', 'dns', 'net', ...(this.config.environment !== 'production' ? ['fs'] : [])];
   }
 
   private categorizeError(error: Error): string {
@@ -333,18 +354,19 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
     if (message.includes('elasticsearch') || message.includes('database')) return 'database';
     if (message.includes('parse') || message.includes('validation')) return 'data_parsing';
     if (message.includes('memory') || message.includes('cpu')) return 'system';
-    
+
     return 'unknown';
   }
 
   private categorizeOperation(operation: string): string {
     const op = operation.toLowerCase();
-    
+
     if (op.includes('scrap') || op.includes('extract')) return 'scraping';
-    if (op.includes('database') || op.includes('elastic') || op.includes('insert')) return 'database';
+    if (op.includes('database') || op.includes('elastic') || op.includes('insert'))
+      return 'database';
     if (op.includes('browser') || op.includes('page') || op.includes('navigate')) return 'browser';
     if (op.includes('health')) return 'health_check';
-    
+
     return 'system';
   }
 
@@ -353,7 +375,7 @@ export abstract class BaseObservabilityProvider implements ObservabilityProvider
       this.logger.info(`Received ${signal}, shutting down observability...`);
       this.shutdown()
         .then(() => this.logger.info('Observability provider shut down successfully.'))
-        .catch((error) => this.logger.error('Error during graceful shutdown.', error as Error));
+        .catch(error => this.logger.error('Error during graceful shutdown.', error as Error));
     };
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

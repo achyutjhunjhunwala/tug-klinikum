@@ -53,7 +53,7 @@ export class DataExtractor {
 
       try {
         // Wait for page to be fully loaded with timing
-        await this.observability.tracer.wrapAsync('page_ready_wait', async (pageReadySpan) => {
+        await this.observability.tracer.wrapAsync('page_ready_wait', async pageReadySpan => {
           pageReadySpan.setAttributes({
             'page.url': sourceUrl,
           });
@@ -73,9 +73,9 @@ export class DataExtractor {
         const scrapingStartTime = Date.now();
         const rawData = await this.scrapePageData(page);
         const scrapingDuration = Date.now() - scrapingStartTime;
-        
+
         const elementsFound = Object.keys(rawData);
-        
+
         // Enhanced span attributes with scraping details
         span.setAttributes({
           'extraction.elements_found_count': elementsFound.length,
@@ -102,18 +102,21 @@ export class DataExtractor {
         try {
           validatedData = ScrapedDataSchema.parse(parsedData);
         } catch (validationError) {
-          const error = new Error(`Data validation failed: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`);
+          const error = new Error(
+            `Data validation failed: ${validationError instanceof Error ? validationError.message : 'Unknown validation error'}`
+          );
           this.observability.tracer.recordException(span, error, {
             'validation.failed': true,
             'validation.raw_data': JSON.stringify(parsedData),
           });
-          
+
           // Log data quality issue
           this.observability.logger.logDataQualityIssue('validation_failed', {
             parsedData,
-            validationError: validationError instanceof Error ? validationError.message : String(validationError),
+            validationError:
+              validationError instanceof Error ? validationError.message : String(validationError),
           });
-          
+
           throw error;
         }
 
@@ -122,7 +125,8 @@ export class DataExtractor {
           const userAgent = navigator.userAgent;
           let browserType: 'chromium' | 'firefox' | 'webkit' = 'chromium';
           if (userAgent.includes('Firefox')) browserType = 'firefox';
-          else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) browserType = 'webkit';
+          else if (userAgent.includes('Safari') && !userAgent.includes('Chrome'))
+            browserType = 'webkit';
 
           // In browser context: screen and window are available
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,6 +145,7 @@ export class DataExtractor {
         // Create the hospital metric
         const hospitalMetric: CreateHospitalMetric = {
           ...validatedData,
+          department: 'adult', // Default to adult, will be overridden by scraper
           scrapingSuccess: true,
           sourceUrl,
           metadata: {
@@ -173,7 +178,12 @@ export class DataExtractor {
         });
 
         // Add business context to span
-        const businessContext: { waitTime?: number; patientCount?: number; dataQuality?: number; retryCount?: number } = {
+        const businessContext: {
+          waitTime?: number;
+          patientCount?: number;
+          dataQuality?: number;
+          retryCount?: number;
+        } = {
           waitTime: validatedData.waitTimeMinutes,
           dataQuality: this.calculateExtractionQuality(validatedData, elementsFound.length),
         };
@@ -202,10 +212,10 @@ export class DataExtractor {
         });
 
         return result;
-        
       } catch (error) {
         const totalProcessingTime = Date.now() - startTime;
-        const extractionError = error instanceof Error ? error : new Error('Unknown extraction error');
+        const extractionError =
+          error instanceof Error ? error : new Error('Unknown extraction error');
 
         // Properly record exception with comprehensive context
         this.observability.tracer.recordException(span, extractionError, {
@@ -246,18 +256,18 @@ export class DataExtractor {
    */
   private calculateExtractionQuality(data: ScrapedData, elementsFound: number): number {
     let score = 0;
-    
+
     // Data completeness (60% weight)
     if (data.waitTimeMinutes !== undefined && data.waitTimeMinutes >= 0) score += 0.3;
     if (data.totalPatients !== undefined && data.totalPatients >= 0) score += 0.3;
-    
+
     // Data freshness (20% weight)
     if (data.updateDelayMinutes !== undefined && data.updateDelayMinutes < 30) score += 0.2;
-    
+
     // Elements found (20% weight) - more elements suggest better extraction
     if (elementsFound >= 3) score += 0.2;
     else if (elementsFound >= 2) score += 0.1;
-    
+
     return score;
   }
 
@@ -266,13 +276,13 @@ export class DataExtractor {
    */
   private identifyFailurePhase(error: Error): string {
     const message = error.message.toLowerCase();
-    
+
     if (message.includes('page') || message.includes('ready')) return 'page_ready';
     if (message.includes('scrape') || message.includes('element')) return 'data_scraping';
     if (message.includes('parse') || message.includes('validation')) return 'data_parsing';
     if (message.includes('timeout')) return 'timeout';
     if (message.includes('network')) return 'network';
-    
+
     return 'unknown';
   }
 
@@ -343,20 +353,20 @@ export class DataExtractor {
       const patientSelectors = [
         '.wazimo__waiting',
         '.wazimo__waiting .fact',
-        '.wazimo__ambulance', 
+        '.wazimo__ambulance',
         '.wazimo__ambulance .fact',
-        '.wazimo__emergencies',         // NEW: Emergency cases selector (plural!)
-        '.wazimo__emergencies .fact',   // NEW: Emergency cases fact
+        '.wazimo__emergencies', // NEW: Emergency cases selector (plural!)
+        '.wazimo__emergencies .fact', // NEW: Emergency cases fact
         '.wazimo--box .fact',
         '[class*="patient"]',
         '[class*="anzahl"]',
-        '[class*="notfall"]',           // NEW: Emergency cases
-        '[class*="emergency"]',         // NEW: Emergency cases
+        '[class*="notfall"]', // NEW: Emergency cases
+        '[class*="emergency"]', // NEW: Emergency cases
         'span:has-text("Patient")',
-        'span:has-text("Notfall")',     // NEW: Emergency cases
+        'span:has-text("Notfall")', // NEW: Emergency cases
         'span:has-text("Lebensbedrohlich")', // NEW: Life-threatening emergencies
         'div:has-text("Patienten")',
-        'div:has-text("Notfälle")',     // NEW: Emergency cases
+        'div:has-text("Notfälle")', // NEW: Emergency cases
         'div:has-text("Lebensbedrohliche")', // NEW: Life-threatening emergencies
       ];
 
@@ -519,19 +529,19 @@ export class DataExtractor {
     // Priority-based extraction - check most specific selectors first
     const selectorPriority = {
       total: [
-        'patients_.wazimo__waiting',           // Highest priority: specific selector
+        'patients_.wazimo__waiting', // Highest priority: specific selector
         'patients_.wazimo__waiting .fact',
         'patients_.wazimo--box .fact',
       ],
       ambulance: [
-        'patients_.wazimo__ambulance',         // Highest priority: specific selector  
+        'patients_.wazimo__ambulance', // Highest priority: specific selector
         'patients_.wazimo__ambulance .fact',
         'patients_.wazimo--box .fact',
       ],
       emergency: [
-        'patients_.wazimo__emergencies',       // Highest priority: specific selector (plural!)
+        'patients_.wazimo__emergencies', // Highest priority: specific selector (plural!)
         'patients_.wazimo__emergencies .fact',
-        'patients_[class*="notfall"]',         // Emergency-related selectors
+        'patients_[class*="notfall"]', // Emergency-related selectors
         'patients_span:has-text("Lebensbedrohlich")',
         'patients_div:has-text("Lebensbedrohliche")',
       ],
@@ -554,7 +564,7 @@ export class DataExtractor {
           const match = value.match(/(\d+)/);
           if (match && match[1]) {
             const count = parseInt(match[1], 10);
-            
+
             // Sanity check: patient counts should be reasonable (0-200)
             if (count >= 0 && count <= 200) {
               this.observability.logger.info('Patient count extracted (priority)', {
@@ -584,7 +594,7 @@ export class DataExtractor {
           const match = value.match(/(\d+)/);
           if (match && match[1]) {
             const count = parseInt(match[1], 10);
-            
+
             // Sanity check: reject unreasonable numbers
             if (count >= 0 && count <= 200) {
               this.observability.logger.info('Patient count extracted (fallback)', {
@@ -612,30 +622,30 @@ export class DataExtractor {
 
   /**
    * Extracts the data freshness indicator from hospital website
-   * 
+   *
    * This method parses German text patterns to determine how long ago
    * the hospital last updated their emergency room status.
-   * 
+   *
    * @param data Raw scraped data from the website
    * @returns Number of minutes since hospital's last data update, or undefined if not found
-   * 
+   *
    * @example
    * // German text: "zuletzt aktualisiert vor 14 min"
    * // Returns: 14
-   * 
-   * // German text: "vor 5 min"  
+   *
+   * // German text: "vor 5 min"
    * // Returns: 5
-   * 
+   *
    * // English fallback: "updated 20 min ago"
    * // Returns: 20
    */
   private extractUpdateDelay(data: Record<string, unknown>): number | undefined {
     // Regex patterns for extracting update delay in multiple languages
     const patterns = [
-      /vor\s*(\d+)\s*min/i,                           // "vor 14 min"
+      /vor\s*(\d+)\s*min/i, // "vor 14 min"
       /zuletzt\s*aktualisiert\s*vor\s*(\d+)\s*min/i, // "zuletzt aktualisiert vor 14 min" (primary)
-      /(\d+)\s*min.*ago/i,                            // "14 min ago" (English fallback)
-      /updated\s*(\d+)\s*min/i                        // "updated 14 min" (English fallback)
+      /(\d+)\s*min.*ago/i, // "14 min ago" (English fallback)
+      /updated\s*(\d+)\s*min/i, // "updated 14 min" (English fallback)
     ];
 
     for (const [key, value] of Object.entries(data)) {
@@ -650,7 +660,14 @@ export class DataExtractor {
               originalText: value,
               extractedDelayMinutes: delay,
               patternUsed: pattern.source,
-              dataFreshness: delay <= 5 ? 'very fresh' : delay <= 15 ? 'fresh' : delay <= 30 ? 'moderate' : 'stale'
+              dataFreshness:
+                delay <= 5
+                  ? 'very fresh'
+                  : delay <= 15
+                    ? 'fresh'
+                    : delay <= 30
+                      ? 'moderate'
+                      : 'stale',
             });
 
             return delay;
