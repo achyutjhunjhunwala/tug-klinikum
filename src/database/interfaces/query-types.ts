@@ -2,6 +2,8 @@ import { TimeRange } from '@/models/hospital-metric';
 
 export interface QueryFilter {
   timeRange?: TimeRange;
+  startTime?: Date;
+  endTime?: Date;
   scrapingSuccess?: boolean;
   minWaitTime?: number;
   maxWaitTime?: number;
@@ -11,7 +13,6 @@ export interface QueryFilter {
   sortBy?: 'timestamp' | 'waitTimeMinutes' | 'totalPatients';
   sortOrder?: 'asc' | 'desc';
 }
-
 
 export interface DatabaseHealth {
   connected: boolean;
@@ -35,6 +36,6 @@ export interface BulkInsertResult {
 export interface QueryResult<T> {
   data: T[];
   total: number;
-  took: number;
-  hasMore: boolean;
+  offset: number;
+  limit: number;
 }

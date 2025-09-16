@@ -49,14 +49,14 @@ export function createScrapingConfig(): ScrapingConfig {
       proxy: (() => {
         const server = process.env['PROXY_SERVER'];
         if (!server) return undefined;
-        
+
         const proxyConfig: { server: string; username?: string; password?: string } = { server };
         const username = process.env['PROXY_USERNAME'];
         const password = process.env['PROXY_PASSWORD'];
-        
+
         if (username) proxyConfig.username = username;
         if (password) proxyConfig.password = password;
-        
+
         return proxyConfig;
       })(),
     },
@@ -67,3 +67,4 @@ export function createScrapingConfig(): ScrapingConfig {
 
   return config as ScrapingConfig;
 }
+

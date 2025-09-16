@@ -1,6 +1,4 @@
-import {
-  ObservabilityConfig,
-} from '@/observability/interfaces/observability-provider.interface';
+import { ObservabilityConfig } from '@/observability/interfaces/observability-provider.interface';
 import { ElasticObservabilityProvider } from '@/observability/implementations/elastic-observability';
 
 export class ObservabilityFactory {
@@ -42,10 +40,9 @@ export class ObservabilityFactory {
     // Add Elastic config if available
     if (process.env['ELASTICSEARCH_CLOUD_URL'] && process.env['ELASTICSEARCH_API_KEY']) {
       config.elasticConfig = {
-        apmServerUrl: process.env['ELASTICSEARCH_APM_URL'] || 
-          process.env['ELASTICSEARCH_CLOUD_URL']
-            .replace(':9243', ':443')
-            .replace('es.', 'apm.'),
+        apmServerUrl:
+          process.env['ELASTICSEARCH_APM_URL'] ||
+          process.env['ELASTICSEARCH_CLOUD_URL'].replace(':9243', ':443').replace('es.', 'apm.'),
         apiKey: process.env['ELASTICSEARCH_API_KEY'],
       };
     }
@@ -60,7 +57,7 @@ export class ObservabilityFactory {
    */
   private static determineLogLevel(environment: string): 'debug' | 'info' | 'warn' | 'error' {
     const envLogLevel = process.env['LOG_LEVEL'] as 'debug' | 'info' | 'warn' | 'error';
-    
+
     if (envLogLevel) {
       return envLogLevel;
     }
@@ -104,7 +101,10 @@ export class ObservabilityFactory {
       }
     }
 
-    if (config.traceSampling !== undefined && (config.traceSampling < 0 || config.traceSampling > 1)) {
+    if (
+      config.traceSampling !== undefined &&
+      (config.traceSampling < 0 || config.traceSampling > 1)
+    ) {
       throw new Error('Trace sampling must be between 0 and 1');
     }
   }

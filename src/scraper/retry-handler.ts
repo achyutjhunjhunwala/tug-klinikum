@@ -96,7 +96,6 @@ export class RetryHandler {
               attempts: attempt,
               totalTime,
             };
-
           } catch (error) {
             lastError = error as Error;
             const isRetryable = this.shouldRetry(lastError, attempt, finalConfig);
@@ -116,11 +115,7 @@ export class RetryHandler {
               );
             } else if (isRetryable) {
               // Log retries as warnings
-              this.observability.logger.logScrapingRetry(
-                operationName,
-                attempt,
-                lastError.message
-              );
+              this.observability.logger.logScrapingRetry(operationName, attempt, lastError.message);
             } else {
               // Log non-retryable errors immediately
               this.observability.logger.error('Non-retryable error encountered', lastError, {
@@ -170,7 +165,10 @@ export class RetryHandler {
         });
 
         // Record failure metrics
-        this.observability.metrics.recordError('retry_exhausted', lastError?.name || 'UnknownError');
+        this.observability.metrics.recordError(
+          'retry_exhausted',
+          lastError?.name || 'UnknownError'
+        );
 
         return {
           success: false,

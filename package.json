@@ -7,7 +7,9 @@
   "scripts": {
     "build": "npx tsc",
     "start": "node -r module-alias/register dist/index.js",
+    "start:multi": "node -r module-alias/register dist/index-multi-department.js",
     "dev": "tsx watch src/index.ts",
+    "dev:multi": "tsx watch src/index-multi-department.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
@@ -23,6 +25,8 @@
   "keywords": [
     "scraping",
     "hospital",
+    "multi-department",
+    "emergency-room",
     "analytics",
     "typescript",
     "playwright",

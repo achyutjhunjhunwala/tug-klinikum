@@ -1,13 +1,16 @@
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { BaseObservabilityProvider } from './base-observability';
-import { ObservabilityConfig, ObservabilityLogger } from '@/observability/interfaces/observability-provider.interface';
+import {
+  ObservabilityConfig,
+  ObservabilityLogger,
+} from '@/observability/interfaces/observability-provider.interface';
 import { PinoLogger } from '@/observability/otel/pino-logger';
 
 export class ElasticObservabilityProvider extends BaseObservabilityProvider {
   constructor(config: ObservabilityConfig) {
     super(config);
-    
+
     if (!config.elasticConfig) {
       throw new Error('Elastic configuration is required for ElasticObservabilityProvider');
     }
@@ -41,7 +44,7 @@ export class ElasticObservabilityProvider extends BaseObservabilityProvider {
 
   override async initialize(): Promise<void> {
     await super.initialize();
-    
+
     this.logger.info('Elastic observability provider initialized', {
       apmServer: this.config.elasticConfig!.apmServerUrl,
       service: this.serviceName,

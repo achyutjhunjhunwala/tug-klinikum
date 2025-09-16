@@ -1,6 +1,6 @@
 import { ObservabilityProvider } from '@/observability';
 import { DatabaseClient } from '@/database';
-import { PlaywrightScraper, ScrapingResult } from '@/scraper';
+import { PlaywrightScraper, ScrapingResult } from '@/scraper/playwright-scraper';
 
 export interface JobRunnerConfig {
   scrapingInterval: number; // minutes
@@ -87,37 +87,76 @@ export class JobRunner {
       let result: JobExecutionResult | undefined;
 
       try {
-        // Execute scraping
-        const scrapingResult = await this.scraper.scrape();
+        // Define both URLs to scrape
+        const urls = [
+          {
+            url: process.env['ADULT_TARGET_URL'] || 'https://www.vivantes.de/klinikum-im-friedrichshain/rettungsstelle',
+            department: 'adult'
+          },
+          {
+            url: process.env['CHILDREN_TARGET_URL'] || 'https://www.vivantes.de/klinikum-im-friedrichshain/kinder-jugendmedizin/kinderrettungsstelle',
+            department: 'children'
+          }
+        ];
 
         let recordsInserted = 0;
 
-        if (scrapingResult.success && scrapingResult.data) {
-          // Insert data into database
-          try {
-            const documentId = await this.database.insert(scrapingResult.data);
-            recordsInserted = 1;
+        // Scrape each URL sequentially
+        for (const { url, department } of urls) {
+          this.observability.logger.info('Starting scraping for department', {
+            jobId,
+            department,
+            url,
+          });
 
-            this.observability.logger.info('Data inserted successfully', {
+
+          // Update the target URL internally
+          (this.scraper as any).config.targetUrl = url;
+
+          // Execute scraping
+          const scrapingResult = await this.scraper.scrape();
+
+          if (scrapingResult.success && scrapingResult.data) {
+            // Add department info to the data
+            scrapingResult.data.department = department as 'adult' | 'children';
+            scrapingResult.data.sourceUrl = url;
+
+            // Insert data into database
+            try {
+              const documentId = await this.database.insert(scrapingResult.data);
+              recordsInserted++;
+
+              this.observability.logger.info('Data inserted successfully', {
+                jobId,
+                department,
+                documentId,
+                waitTime: scrapingResult.data.waitTimeMinutes,
+              });
+
+              this.observability.metrics.recordsInserted.add(1, {
+                job_id: jobId,
+                source: 'vivantes',
+                department,
+              });
+            } catch (dbError) {
+              this.observability.recordError('database_insert_failed', dbError as Error, {
+                job_id: jobId,
+                scraping_success: true,
+                department,
+              });
+
+              // Don't fail the entire job if scraping succeeded but DB insert failed
+              this.observability.logger.warn('Database insert failed but scraping succeeded', {
+                jobId,
+                department,
+                error: (dbError as Error).message,
+              });
+            }
+          } else {
+            this.observability.logger.warn('Scraping failed for department', {
               jobId,
-              documentId,
-              waitTime: scrapingResult.data.waitTimeMinutes,
-            });
-
-            this.observability.metrics.recordsInserted.add(1, {
-              job_id: jobId,
-              source: 'vivantes',
-            });
-          } catch (dbError) {
-            this.observability.recordError('database_insert_failed', dbError as Error, {
-              job_id: jobId,
-              scraping_success: true,
-            });
-
-            // Don't fail the entire job if scraping succeeded but DB insert failed
-            this.observability.logger.warn('Database insert failed but scraping succeeded', {
-              jobId,
-              error: (dbError as Error).message,
+              department,
+              error: scrapingResult.error,
             });
           }
         }
@@ -126,29 +165,38 @@ export class JobRunner {
         const duration = endTime.getTime() - startTime.getTime();
 
         result = {
-          success: scrapingResult.success,
+          success: recordsInserted > 0,
           jobId,
           startTime,
           endTime,
           duration,
-          scrapingResult,
+          scrapingResult: recordsInserted > 0 ? {
+            success: true,
+            metrics: { totalTime: duration, pageLoadTime: 0, extractionTime: 0, retries: 0 },
+            metadata: { url: urls.map(u => u.url).join(', '), timestamp: endTime, scraperId: `hospital-scraper-multi-${process.pid}`, browserType: 'chromium' },
+          } : {
+            success: false,
+            error: 'No data could be scraped from any department',
+            metrics: { totalTime: duration, pageLoadTime: 0, extractionTime: 0, retries: 0 },
+            metadata: { url: urls.map(u => u.url).join(', '), timestamp: endTime, scraperId: `hospital-scraper-multi-${process.pid}`, browserType: 'chromium' },
+          },
           recordsInserted,
-          error: scrapingResult.success ? undefined : scrapingResult.error,
+          error: recordsInserted === 0 ? 'No data could be scraped from any department' : undefined,
         };
 
         span.setAttributes({
           'job.success': result.success,
           'job.duration_ms': duration,
           'job.records_inserted': recordsInserted,
-          'job.wait_time': scrapingResult.data?.waitTimeMinutes || 0,
+          'job.departments_scraped': urls.length,
         });
 
         if (result.success) {
           this.observability.logger.info('Job execution completed successfully', {
             jobId,
             duration,
-            waitTime: scrapingResult.data?.waitTimeMinutes,
             recordsInserted,
+            departmentsScraped: urls.length,
           });
         } else {
           this.observability.logger.error('Job execution failed', new Error(result.error!), {
@@ -188,7 +236,15 @@ export class JobRunner {
         }
       }
 
-      return result!;
+      return result || {
+        success: false,
+        jobId,
+        startTime,
+        endTime: new Date(),
+        duration: 0,
+        recordsInserted: 0,
+        error: 'Unknown error occurred',
+      };
     });
   }
 

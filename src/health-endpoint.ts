@@ -50,10 +50,12 @@ export class HealthEndpoint {
         }
       } catch (error) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          error: 'Internal server error',
-          message: error instanceof Error ? error.message : 'Unknown error'
-        }));
+        res.end(
+          JSON.stringify({
+            error: 'Internal server error',
+            message: error instanceof Error ? error.message : 'Unknown error',
+          })
+        );
       }
     });
 
@@ -79,9 +81,9 @@ export class HealthEndpoint {
 
   private async handleHealthCheck(res: ServerResponse): Promise<void> {
     const healthResult = await this.healthChecker.performHealthCheck();
-    
-    const statusCode = healthResult.status === 'healthy' ? 200 : 
-                      healthResult.status === 'degraded' ? 200 : 503;
+
+    const statusCode =
+      healthResult.status === 'healthy' ? 200 : healthResult.status === 'degraded' ? 200 : 503;
 
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(healthResult, null, 2));
@@ -92,10 +94,12 @@ export class HealthEndpoint {
     const statusCode = ready ? 200 : 503;
 
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: ready ? 'ready' : 'not_ready',
-      timestamp: new Date().toISOString(),
-    }));
+    res.end(
+      JSON.stringify({
+        status: ready ? 'ready' : 'not_ready',
+        timestamp: new Date().toISOString(),
+      })
+    );
   }
 
   private async handleLivenessCheck(res: ServerResponse): Promise<void> {
@@ -103,11 +107,13 @@ export class HealthEndpoint {
     const statusCode = alive ? 200 : 503;
 
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: alive ? 'alive' : 'not_alive',
-      timestamp: new Date().toISOString(),
-      uptime: this.healthChecker.getUptime(),
-    }));
+    res.end(
+      JSON.stringify({
+        status: alive ? 'alive' : 'not_alive',
+        timestamp: new Date().toISOString(),
+        uptime: this.healthChecker.getUptime(),
+      })
+    );
   }
 
   private async handleSimpleHealth(res: ServerResponse): Promise<void> {

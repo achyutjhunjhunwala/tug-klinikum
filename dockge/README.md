@@ -34,6 +34,10 @@ This directory contains optimized configuration for deploying the Hospital Scrap
    ELASTICSEARCH_CLOUD_URL=https://your-deployment.es.region.gcp.cloud.es.io:9200
    ELASTICSEARCH_API_KEY=your_elasticsearch_api_key_here
    ELASTICSEARCH_APM_URL=https://your-deployment.apm.region.gcp.cloud.es.io:443
+
+   # Optional - Dual URL Configuration (defaults provided)
+   ADULT_TARGET_URL=https://www.vivantes.de/klinikum-im-friedrichshain/rettungsstelle
+   CHILDREN_TARGET_URL=https://www.vivantes.de/klinikum-im-friedrichshain/kinder-jugendmedizin/kinderrettungsstelle
    ```
 
 4. **Deploy the Stack**:
@@ -166,6 +170,8 @@ Data persists across container restarts and updates.
 | `ELASTICSEARCH_CLOUD_URL` | ✅ | - | Elasticsearch cluster endpoint |
 | `ELASTICSEARCH_API_KEY` | ✅ | - | Base64 encoded API key |
 | `ELASTICSEARCH_APM_URL` | ✅ | - | APM server endpoint |
+| `ADULT_TARGET_URL` | ❌ | vivantes.de/...rettungsstelle | Adult emergency room URL |
+| `CHILDREN_TARGET_URL` | ❌ | vivantes.de/.../kinderrettungsstelle | Children emergency room URL |
 | `APP_PORT` | ❌ | 3000 | External port for application |
 | `SCRAPING_INTERVAL` | ❌ | 30 | Scraping frequency (minutes) |
 | `LOG_LEVEL` | ❌ | info | Logging level |
