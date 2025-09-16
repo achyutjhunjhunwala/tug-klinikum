@@ -11,12 +11,9 @@ export const HOSPITAL_SCRAPING_TEMPLATE = {
     settings: {
       number_of_shards: 1,
       number_of_replicas: 1,
-      'index.lifecycle.name': 'hospital-scraping-ilm-policy',
-      'index.lifecycle.rollover_alias': 'hospital-metrics-write',
       'index.refresh_interval': '30s',
-      'index.translog.durability': 'async',
-      'index.mapping.date_detection': true,
       'index.codec': 'best_compression',
+      'index.lifecycle.name': 'hospital-scraping-ilm-policy',
     },
     mappings: {
       properties: {
@@ -45,28 +42,28 @@ export const HOSPITAL_SCRAPING_TEMPLATE = {
         totalPatients: {
           type: 'integer',
           meta: {
-            description: 'Total number of patients in treatment or waiting',
+            description: 'Total patients in treatment or waiting',
             unit: 'count',
           },
         },
         ambulancePatients: {
           type: 'integer',
           meta: {
-            description: 'Number of patients who arrived by ambulance',
+            description: 'Patients who arrived by ambulance',
             unit: 'count',
           },
         },
         emergencyCases: {
           type: 'integer',
           meta: {
-            description: 'Number of life-threatening emergency cases',
+            description: 'Life-threatening emergency cases',
             unit: 'count',
           },
         },
         updateDelayMinutes: {
           type: 'integer',
           meta: {
-            description: 'Data freshness - minutes since hospital last updated data',
+            description: 'Data freshness in minutes',
             unit: 'minutes',
           },
         },
@@ -127,7 +124,7 @@ export const HOSPITAL_SCRAPING_ILM_POLICY = {
         min_age: '0ms',
         actions: {
           rollover: {
-            max_size: '50GB',
+            max_primary_shard_size: '50GB',
             max_age: '30d',
             max_docs: 1000000,
           },

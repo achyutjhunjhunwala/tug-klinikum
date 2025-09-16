@@ -29,6 +29,14 @@ export class ElasticsearchClient implements DatabaseClient {
       auth: {
         apiKey: config.apiKey!,
       },
+      requestTimeout: config.timeout || 30000,
+      pingTimeout: 3000,
+      maxRetries: config.retries || 3,
+      resurrectStrategy: 'ping',
+      compression: true,
+      sniffOnStart: false,
+      sniffInterval: false,
+      sniffOnConnectionFault: false,
     });
   }
 
@@ -84,14 +92,19 @@ export class ElasticsearchClient implements DatabaseClient {
       timestamp: new Date(),
     };
 
-    await this.client.index({
-      index: this.indexName,
-      id,
-      body: doc,
-      refresh: 'wait_for',
-    });
+    try {
+      await this.client.index({
+        index: this.indexName,
+        id,
+        body: doc,
+        refresh: 'wait_for',
+        timeout: '30s',
+      });
 
-    return id;
+      return id;
+    } catch (error) {
+      throw new Error(`Document insertion failed: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   async bulkInsert(data: CreateHospitalMetric[]): Promise<BulkInsertResult> {
@@ -189,28 +202,28 @@ export class ElasticsearchClient implements DatabaseClient {
             totalPatients: { 
               type: 'integer',
               meta: {
-                description: 'Total number of patients in treatment or waiting',
+                description: 'Total patients in treatment or waiting',
                 unit: 'count'
               }
             },
             ambulancePatients: { 
               type: 'integer',
               meta: {
-                description: 'Number of patients who arrived by ambulance',
+                description: 'Patients who arrived by ambulance',
                 unit: 'count'
               }
             },
             emergencyCases: { 
               type: 'integer',
               meta: {
-                description: 'Number of life-threatening emergency cases',
+                description: 'Life-threatening emergency cases',
                 unit: 'count'
               }
             },
             updateDelayMinutes: { 
               type: 'integer',
               meta: {
-                description: 'Data freshness - minutes since hospital last updated data',
+                description: 'Data freshness in minutes',
                 unit: 'minutes'
               }
             },
@@ -278,19 +291,21 @@ export class ElasticsearchClient implements DatabaseClient {
    */
   async setupIndexTemplates(): Promise<void> {
     try {
-      // Check if template already exists
-      const templateExists = await this.client.indices.existsTemplate({
+      // Check if template exists, if not create, if exists do nothing
+      const templateExists = await this.client.indices.existsIndexTemplate({
         name: HOSPITAL_SCRAPING_TEMPLATE.name
       });
 
       if (!templateExists) {
-        await this.client.indices.putTemplate({
+        await this.client.indices.putIndexTemplate({
           name: HOSPITAL_SCRAPING_TEMPLATE.name,
           body: {
             index_patterns: HOSPITAL_SCRAPING_TEMPLATE.index_patterns,
-            settings: HOSPITAL_SCRAPING_TEMPLATE.template.settings,
-            mappings: HOSPITAL_SCRAPING_TEMPLATE.template.mappings as any,
-            order: HOSPITAL_SCRAPING_TEMPLATE.priority,
+            template: {
+              settings: HOSPITAL_SCRAPING_TEMPLATE.template.settings,
+              mappings: HOSPITAL_SCRAPING_TEMPLATE.template.mappings as any,
+            },
+            priority: HOSPITAL_SCRAPING_TEMPLATE.priority,
           }
         });
         console.log(`✅ Created index template: ${HOSPITAL_SCRAPING_TEMPLATE.name}`);
@@ -308,7 +323,7 @@ export class ElasticsearchClient implements DatabaseClient {
    */
   async setupILMPolicies(): Promise<void> {
     try {
-      // Check if ILM policy already exists
+      // Check if ILM policy exists, if not create, if exists do nothing
       const policyExists = await this.client.ilm.getLifecycle({
         name: HOSPITAL_SCRAPING_ILM_POLICY.name
       }).then(() => true).catch(() => false);
@@ -347,8 +362,6 @@ export class ElasticsearchClient implements DatabaseClient {
       console.log('✅ Production infrastructure setup complete');
     } catch (error) {
       console.error('❌ Failed to setup production infrastructure:', error);
-      // Don't throw here to allow fallback to basic index creation
-      console.warn('⚠️  Falling back to basic index creation');
     }
   }
 

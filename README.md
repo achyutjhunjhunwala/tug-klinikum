@@ -66,6 +66,10 @@ Both options include:
 
 Choose the deployment method that best fits your infrastructure setup.
 
+## 🛠️ Development Scripts
+
+- **`scripts/cleanup-elasticsearch.js`** - Cleans up Elasticsearch index, template, and ILM policy for fresh testing
+
 ## Data Schema
 
 Each scraping run produces records with:
