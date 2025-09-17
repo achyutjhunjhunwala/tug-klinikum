@@ -1,10 +1,13 @@
 filebeat.inputs:
-# Monitor Pino JSON log files
+# Monitor Pino JSON log files (including rotated files)
 - type: log
   paths:
     - /app/logs/*.log
+    - /app/logs/*.*.log  # Include rotated files with date extensions
   json.keys_under_root: true
   json.add_error_key: true
+  close_inactive: 1h  # Close file handles after 1 hour of inactivity
+  scan_frequency: 10s  # Scan for new files every 10 seconds
   processors:
     - timestamp:
         field: "@timestamp"

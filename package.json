@@ -34,7 +34,6 @@
     "observability"
   ],
   "author": "Achyut Jhunjhunwala",
-  "license": "MIT",
   "dependencies": {
     "@elastic/elasticsearch": "8.19.1",
     "@opentelemetry/api": "1.9.0",
@@ -53,6 +52,7 @@
     "module-alias": "2.2.3",
     "node-cron": "3.0.3",
     "pino": "9.9.5",
+    "pino-roll": "^3.1.0",
     "playwright": "1.55.0",
     "uuid": "9.0.1",
     "zod": "3.25.76"
