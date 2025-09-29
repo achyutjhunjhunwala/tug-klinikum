@@ -192,7 +192,7 @@ const Dashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-center text-center">
             <p className="text-gray-600 dark:text-gray-400 text-sm">
-              ❤️ Made with love in Berlin
+              ❤️ Made with love in Berlin by TheUiGuy
             </p>
           </div>
         </div>
