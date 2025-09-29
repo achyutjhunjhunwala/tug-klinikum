@@ -35,7 +35,6 @@ RUN npm ci
 
 # Copy backend source
 COPY backend/ ./
-COPY shared/ ../shared/
 
 # Compile TypeScript to JavaScript (outputs to dist/)
 RUN npm run build
