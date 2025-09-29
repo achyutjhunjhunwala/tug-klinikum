@@ -9,6 +9,28 @@ dist/
 build/
 *.tsbuildinfo
 
+# UI build outputs
+ui/backend/dist/
+ui/frontend/dist/
+ui/frontend/build/
+
+# TypeScript generated files (protect against build artifacts in source)
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts.map
+ui/backend/src/**/*.js
+ui/backend/src/**/*.js.map
+ui/backend/src/**/*.d.ts.map
+ui/frontend/src/**/*.js
+ui/frontend/src/**/*.js.map
+
+# Generated TypeScript declarations (but preserve legitimate .d.ts source files)
+src/**/*.d.ts
+ui/backend/src/**/*.d.ts
+ui/frontend/src/**/*.d.ts
+!src/types/*.d.ts
+!ui/*/src/types/*.d.ts
+
 # Environment files
 .env
 .env.local
@@ -79,3 +101,4 @@ playwright/.cache/
 
 .serena
 .claudeconfig/filebeat-runtime.yml
+ui/TESTING_PLAN.md

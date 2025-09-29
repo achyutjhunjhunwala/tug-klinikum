@@ -4,11 +4,23 @@ Real-time monitoring of emergency room wait times for Vivantes Friedrichshain Ho
 
 ## Features
 
+### 🤖 **Data Collection (Scraper)**
 - **Dual Department Monitoring**: Scrapes both Adult and Children emergency rooms sequentially
 - **Department Classification**: Data tagged with department (`adult` or `children`)
 - **Automated Scheduling**: Runs every 30 minutes via cron
 - **Elasticsearch Storage**: Time-series data with full observability
 - **Robust Error Handling**: Automatic retries and comprehensive logging
+
+### 🌐 **Web Dashboard (Complete Full-Stack)**
+- **Real-time Monitoring**: Live hospital wait time dashboard with auto-refresh
+- **Interactive Visualizations**: Chart.js-powered historical data analysis
+- **Responsive Design**: Mobile-first, touch-optimized interface for all devices
+- **Theme Support**: Light/Dark mode with automatic system preference detection
+- **Department Switching**: Toggle between Adult and Children emergency departments
+- **Time Range Filtering**: View data across multiple periods (6h, 24h, 7d, 15d, 1m, 3m)
+- **Production API**: Rate-limited, CORS-protected backend with security headers
+- **TypeScript Throughout**: Full type safety across frontend and backend
+- **Modern Tech Stack**: React 18, Vite, Tailwind CSS, Express.js, Chart.js
 
 ## Quick Start
 
@@ -23,6 +35,66 @@ npm install
 # 3. Build and start
 npm run build
 npm start
+```
+
+## 🌐 Complete Web Dashboard
+
+### 🎉 **Full-Stack Hospital Dashboard (Complete)**
+
+**Frontend React App**: `http://localhost:3001`
+- ✅ **Real-time Dashboard**: Live hospital wait time metrics with auto-refresh
+- ✅ **Interactive Charts**: Historical data visualization with Chart.js
+- ✅ **Dark/Light Theme**: System preference detection with manual toggle
+- ✅ **Mobile Optimized**: Touch-friendly responsive design for all devices
+- ✅ **Department Filtering**: Switch between Adult and Children emergency departments
+- ✅ **Time Range Selection**: View data across multiple time periods (6h to 3m)
+
+**Backend API**: `http://localhost:4000`
+- ✅ **Production Ready**: Rate limiting, CORS protection, security headers
+- ✅ **Hospital Metrics API**: `/api/hospital/metrics` with comprehensive data
+- ✅ **Health Monitoring**: `/health` endpoint for system status
+- ✅ **Real-time Data**: Direct integration with Elasticsearch
+
+### 🚀 Quick Start (Complete UI)
+
+```bash
+# 1. Start backend API server
+cd ui/backend
+npm install
+npm run dev
+# Backend runs on http://localhost:4000
+
+# 2. Start frontend React app (new terminal)
+cd ui/frontend
+npm install
+npm run dev
+# Frontend runs on http://localhost:3001
+
+# 3. Access the dashboard
+open http://localhost:3001
+```
+
+### API Usage Examples
+```bash
+# Get current wait times for Adult department (6 hour range)
+curl "http://localhost:4000/api/hospital/metrics?department=adult&timeRange=6h"
+
+# Get Children department data for last 24 hours
+curl "http://localhost:4000/api/hospital/metrics?department=children&timeRange=24h"
+
+# Health check
+curl "http://localhost:4000/health"
+```
+
+### Root Project Development
+```bash
+# Start both scraper and API server concurrently
+npm run dev:all
+
+# Start just the API server for UI development
+npm run dev:backend
+
+# Scraper health check on port 3000, API on port 4000
 ```
 
 ## Configuration
@@ -128,19 +200,49 @@ npm run dev
 ## Project Structure
 
 ```
-src/
-├── config/          # Configuration management
-├── database/        # Elasticsearch client
-├── scraper/         # Playwright scraping engine
-├── scheduler/       # Cron job runner
-├── observability/   # Logging & metrics
-└── models/          # Data models & validation
+├── src/             # Main scraper application
+│   ├── config/      # Configuration management
+│   ├── database/    # Elasticsearch client
+│   ├── scraper/     # Playwright scraping engine
+│   ├── scheduler/   # Cron job runner
+│   ├── observability/ # Logging & metrics
+│   └── models/      # Data models & validation
+├── ui/              # Complete Web Dashboard (✅ Full-Stack)
+│   ├── shared/      # Shared TypeScript types
+│   │   └── types/   # Common interfaces (backend/frontend)
+│   ├── backend/     # Express.js API server (✅ Complete)
+│   │   ├── src/     # TypeScript API implementation
+│   │   │   ├── controllers/  # Route handlers
+│   │   │   ├── services/     # Business logic & Elasticsearch
+│   │   │   ├── middlewares/  # Express middlewares & security
+│   │   │   ├── observability/ # Pino logging & monitoring
+│   │   │   └── routes/       # API routes
+│   │   └── package.json
+│   └── frontend/    # React Dashboard (✅ Complete)
+│       ├── src/     # React + TypeScript application
+│       │   ├── components/   # React components
+│       │   │   ├── charts/   # Chart.js visualizations
+│       │   │   ├── common/   # Shared UI components
+│       │   │   └── metrics/  # Metric display components
+│       │   ├── contexts/     # React contexts (theme, etc.)
+│       │   ├── hooks/        # Custom React hooks (data fetching)
+│       │   ├── services/     # API integration (Axios)
+│       │   └── utils/        # Utility functions
+│       ├── index.html        # PWA-ready HTML template
+│       ├── tailwind.config.js # Tailwind CSS configuration
+│       ├── vite.config.ts    # Vite build configuration
+│       └── package.json
+├── docs/            # Architecture & observability docs
+├── portainer/       # Portainer deployment configs
+└── dockge/          # Dockge deployment configs
 ```
 
 ## Documentation
 
 - **[📖 Architecture.md](./docs/Architecture.md)**: Complete system architecture and technical details
 - **[📊 Observability.md](./docs/Observability.md)**: Monitoring, logging, and metrics guide
+- **[🌐 Complete UI Documentation](./ui/README.md)**: Full-stack web dashboard (backend + frontend)
+- **[🧪 UI Testing Plan](./ui/TESTING_PLAN.md)**: Comprehensive testing strategy for the web dashboard
 
 ## License
 
