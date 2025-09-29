@@ -138,6 +138,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=4000
+      - USE_HTTPS=${USE_HTTPS:-false}
       - ELASTICSEARCH_CLOUD_URL=${ELASTICSEARCH_CLOUD_URL}
       - ELASTICSEARCH_API_KEY=${ELASTICSEARCH_API_KEY}
       - ELASTICSEARCH_INDEX=${ELASTICSEARCH_INDEX:-hospital-metrics}
