@@ -12,8 +12,8 @@ WORKDIR /app/frontend
 # Copy frontend package files
 COPY frontend/package*.json ./
 
-# Install frontend dependencies
-RUN npm ci --only=production
+# Install frontend dependencies (including dev deps for build)
+RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
@@ -30,11 +30,12 @@ WORKDIR /app/backend
 # Copy backend package files
 COPY backend/package*.json ./
 
-# Install backend dependencies
-RUN npm ci --only=production
+# Install backend dependencies (including dev deps for build)
+RUN npm ci
 
 # Copy backend source
 COPY backend/ ./
+COPY shared/ ../shared/
 
 # Build backend TypeScript
 RUN npm run build
@@ -47,16 +48,16 @@ RUN apk add --no-cache wget
 
 WORKDIR /app
 
-# Copy backend built files and dependencies
+# Copy backend built files
 COPY --from=backend-builder /app/backend/dist ./backend/dist
-COPY --from=backend-builder /app/backend/node_modules ./backend/node_modules
 COPY --from=backend-builder /app/backend/package*.json ./backend/
+
+# Install only production dependencies
+WORKDIR /app/backend
+RUN npm ci --only=production
 
 # Copy frontend built files (backend will serve these)
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
-
-# Set working directory to backend
-WORKDIR /app/backend
 
 # Expose port 4000 for the API server
 EXPOSE 4000
