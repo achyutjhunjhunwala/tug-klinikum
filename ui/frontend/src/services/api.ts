@@ -7,7 +7,9 @@ class HospitalApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+    // Use relative URL in production (served from same origin)
+    // Use localhost in development (separate dev servers)
+    this.baseURL = import.meta.env.VITE_API_URL || '/api';
 
     this.client = axios.create({
       baseURL: this.baseURL,
@@ -92,10 +94,11 @@ class HospitalApiService {
   }
 
   /**
-   * Get backend health status (different endpoint)
+   * Get backend health status (uses same origin as API)
    */
   async getBackendHealth(): Promise<HealthCheckResponse> {
-    const response = await axios.get<HealthCheckResponse>('http://localhost:4000/health', {
+    // Use relative URL to work with any domain
+    const response = await axios.get<HealthCheckResponse>('/health', {
       timeout: 5000,
     });
     return response.data;
