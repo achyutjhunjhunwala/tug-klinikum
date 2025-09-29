@@ -1,5 +1,7 @@
 # 🏥 Hospital Emergency Room Scraper
 
+[![Build and Push Docker Images](https://github.com/achyutjhunjhunwala/tug-klinikum/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/achyutjhunjhunwala/tug-klinikum/actions/workflows/docker-build.yml)
+
 Real-time monitoring of emergency room wait times for Vivantes Friedrichshain Hospital (Adult & Children departments).
 
 ## Features
