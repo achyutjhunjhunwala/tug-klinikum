@@ -1,0 +1,8 @@
+# TypeScript output files
+*.js
+*.d.ts
+*.js.map
+
+# Build artifacts
+dist/
+build/
