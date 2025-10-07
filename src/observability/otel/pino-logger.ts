@@ -1,8 +1,6 @@
 import pino from 'pino';
 import * as fs from 'fs';
 import * as path from 'path';
-// @ts-ignore: No types available for pino-roll
-import { createWriteStream } from 'pino-roll';
 import { ObservabilityLogger } from '@/observability/interfaces/observability-provider.interface';
 
 export class PinoLogger implements ObservabilityLogger {
@@ -24,15 +22,15 @@ export class PinoLogger implements ObservabilityLogger {
       fs.mkdirSync(logsDir, { recursive: true });
     }
 
-    // Create rotating log file stream
-    const logFile = path.join(logsDir, `${serviceName}.log`);
-    const rotatingStream = createWriteStream({
-      file: logFile,
-      size: '100MB', // Rotate when file reaches 100MB
-      frequency: 'daily', // Also rotate daily
-      extension: '.%DATE%.log', // Add date to rotated files
-      limit: {
-        count: 5, // Keep max 5 files (5 days worth)
+    // Create rotating log file transport using pino-roll
+    const logFile = path.join(logsDir, serviceName);
+    const fileTransport = pino.transport({
+      target: 'pino-roll',
+      options: {
+        file: logFile,
+        frequency: 'daily', // Rotate daily
+        size: '100m', // Also rotate at 100MB
+        mkdir: true, // Auto-create directory
       },
     });
 
@@ -70,7 +68,7 @@ export class PinoLogger implements ObservabilityLogger {
       },
       pino.multistream([
         { stream: process.stdout }, // Console output
-        { stream: rotatingStream }, // Rotating file output for Filebeat
+        { stream: fileTransport }, // Rotating file output for Filebeat
       ])
     );
   }
