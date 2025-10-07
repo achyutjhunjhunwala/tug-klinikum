@@ -11,9 +11,36 @@ env:
   UI_IMAGE: ${{ github.repository }}-ui
 
 jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      scraper: ${{ steps.filter.outputs.scraper }}
+      ui: ${{ steps.filter.outputs.ui }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Check for changes
+      uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          scraper:
+            - 'src/**'
+            - 'config/**'
+            - 'Dockerfile'
+            - 'package.json'
+            - 'package-lock.json'
+            - 'tsconfig.json'
+          ui:
+            - 'ui/**'
+
   build-and-push-scraper:
     name: Build Scraper Image
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.scraper == 'true'
     permissions:
       contents: read
       packages: write
@@ -66,6 +93,8 @@ jobs:
   build-and-push-ui:
     name: Build UI Image
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ui == 'true'
     permissions:
       contents: read
       packages: write
@@ -117,23 +146,36 @@ jobs:
   summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [build-and-push-scraper, build-and-push-ui]
+    needs: [detect-changes, build-and-push-scraper, build-and-push-ui]
+    if: always()
     steps:
     - name: Create deployment summary
       run: |
-        echo "# 🚀 Docker Images Built and Pushed" >> $GITHUB_STEP_SUMMARY
+        echo "# 🚀 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "## 📦 Available Images" >> $GITHUB_STEP_SUMMARY
+        echo "## 📦 Build Status" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Hospital Scraper" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "ghcr.io/${{ env.SCRAPER_IMAGE }}:latest" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ needs.detect-changes.outputs.scraper }}" == "true" ]; then
+          echo "✅ **Hospital Scraper**: Built and pushed" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "ghcr.io/${{ env.SCRAPER_IMAGE }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⏭️ **Hospital Scraper**: Skipped (no changes detected)" >> $GITHUB_STEP_SUMMARY
+        fi
+
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Hospital UI (API + Frontend)" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "ghcr.io/${{ env.UI_IMAGE }}:latest" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ needs.detect-changes.outputs.ui }}" == "true" ]; then
+          echo "✅ **Hospital UI**: Built and pushed" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "ghcr.io/${{ env.UI_IMAGE }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⏭️ **Hospital UI**: Skipped (no changes detected)" >> $GITHUB_STEP_SUMMARY
+        fi
+
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🐳 Docker Compose" >> $GITHUB_STEP_SUMMARY
         echo "Update your docker-compose.yml to use these images and deploy!" >> $GITHUB_STEP_SUMMARY
