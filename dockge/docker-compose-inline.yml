@@ -255,11 +255,14 @@ configs:
     content: |
       filebeat.inputs:
       # Monitor Pino JSON log files
+      # Note: pino-roll creates numbered files (hospital-scraper.1, .2, etc.)
       - type: log
         paths:
-          - /app/logs/*.log
+          - /app/logs/hospital-scraper*
         json.keys_under_root: true
         json.add_error_key: true
+        fields:
+          app: "hospital-scraper"
         processors:
           - timestamp:
               field: "@timestamp"
