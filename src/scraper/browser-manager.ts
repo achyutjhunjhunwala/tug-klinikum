@@ -112,11 +112,36 @@ export class BrowserManager {
 
       page.on('response', response => {
         if (response.status() >= 400) {
-          observability.logger.warn('HTTP error response', {
-            request_url: response.url(),  // Changed from 'url' to avoid ECS mapping conflict
-            status: response.status(),
-            statusText: response.statusText(),
-          });
+          const responseUrl = response.url();
+          try {
+            const urlObj = new URL(responseUrl);
+            observability.logger.warn('HTTP error response', {
+              url: {
+                original: responseUrl,
+                full: responseUrl,
+                scheme: urlObj.protocol.replace(':', ''),
+                domain: urlObj.hostname,
+                path: urlObj.pathname,
+              },
+              http: {
+                response: {
+                  status_code: response.status(),
+                  status_text: response.statusText(),
+                },
+              },
+            });
+          } catch (error) {
+            // Fallback if URL parsing fails
+            observability.logger.warn('HTTP error response', {
+              url: { original: responseUrl },
+              http: {
+                response: {
+                  status_code: response.status(),
+                  status_text: response.statusText(),
+                },
+              },
+            });
+          }
         }
       });
 
