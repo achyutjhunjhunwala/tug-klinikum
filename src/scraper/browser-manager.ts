@@ -113,7 +113,7 @@ export class BrowserManager {
       page.on('response', response => {
         if (response.status() >= 400) {
           observability.logger.warn('HTTP error response', {
-            url: response.url(),
+            request_url: response.url(),  // Changed from 'url' to avoid ECS mapping conflict
             status: response.status(),
             statusText: response.statusText(),
           });
