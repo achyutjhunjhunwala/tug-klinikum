@@ -80,7 +80,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@eslint/js": "9.35.0",
+    "@eslint/js": "9.39.1",
     "@types/jest": "29.5.14",
     "@types/node": "20.19.16",
     "@types/node-cron": "3.0.11",
