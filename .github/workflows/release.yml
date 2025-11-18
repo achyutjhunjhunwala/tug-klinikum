@@ -1,0 +1,228 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0 or v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
+
+      - name: Validate version format
+        id: validate
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          # Remove 'v' prefix if present
+          VERSION_CLEAN="${VERSION#v}"
+
+          # Validate semantic version format
+          if [[ ! "$VERSION_CLEAN" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "❌ Invalid version format: $VERSION"
+            echo "Expected format: X.Y.Z or X.Y.Z-prerelease (e.g., 1.0.0 or 1.0.0-beta.1)"
+            exit 1
+          fi
+
+          # Always use 'v' prefix for git tags
+          TAG_NAME="v${VERSION_CLEAN}"
+
+          echo "version_clean=${VERSION_CLEAN}" >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+
+          echo "✅ Version: ${VERSION_CLEAN}"
+          echo "✅ Tag: ${TAG_NAME}"
+
+      - name: Check if tag exists
+        run: |
+          TAG_NAME="${{ steps.validate.outputs.tag_name }}"
+
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "❌ Tag $TAG_NAME already exists!"
+            echo "Please choose a different version number."
+            exit 1
+          fi
+
+          echo "✅ Tag $TAG_NAME is available"
+
+      - name: Get previous tag
+        id: prev-tag
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found. This is the first release."
+            echo "previous_tag=" >> $GITHUB_OUTPUT
+          else
+            echo "Previous tag: $PREVIOUS_TAG"
+            echo "previous_tag=${PREVIOUS_TAG}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tagName = '${{ steps.validate.outputs.tag_name }}';
+            const previousTag = '${{ steps.prev-tag.outputs.previous_tag }}';
+            const isPrerelease = ${{ github.event.inputs.prerelease }};
+
+            let changelogBody = '';
+
+            try {
+              // Use GitHub's automatic release notes generation
+              const response = await github.rest.repos.generateReleaseNotes({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tagName,
+                previous_tag_name: previousTag || undefined,
+              });
+
+              changelogBody = response.data.body;
+
+            } catch (error) {
+              console.log('Could not auto-generate release notes, creating manual changelog');
+
+              // Fallback: Create a basic changelog
+              changelogBody = `## Changes in ${tagName}\n\n`;
+
+              if (previousTag) {
+                changelogBody += `Full changelog: https://github.com/${{ github.repository }}/compare/${previousTag}...${tagName}\n\n`;
+              }
+
+              // Get commits since last tag
+              try {
+                const commits = await github.rest.repos.compareCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  base: previousTag || context.payload.repository.default_branch,
+                  head: context.sha,
+                });
+
+                if (commits.data.commits.length > 0) {
+                  changelogBody += '### Commits\n\n';
+                  commits.data.commits.forEach(commit => {
+                    const message = commit.commit.message.split('\n')[0];
+                    const sha = commit.sha.substring(0, 7);
+                    changelogBody += `- ${message} (${sha})\n`;
+                  });
+                }
+              } catch (e) {
+                console.log('Could not fetch commits:', e.message);
+              }
+            }
+
+            // Add Docker image information
+            changelogBody += '\n\n---\n\n';
+            changelogBody += '## 🐳 Docker Images\n\n';
+            changelogBody += 'This release includes the following Docker images:\n\n';
+            changelogBody += '### Hospital Scraper\n';
+            changelogBody += '```bash\n';
+            changelogBody += `docker pull ghcr.io/${{ github.repository }}:${tagName.substring(1)}\n`;
+            changelogBody += `docker pull ghcr.io/${{ github.repository }}:latest\n`;
+            changelogBody += '```\n\n';
+            changelogBody += '### Hospital UI\n';
+            changelogBody += '```bash\n';
+            changelogBody += `docker pull ghcr.io/${{ github.repository }}-ui:${tagName.substring(1)}\n`;
+            changelogBody += `docker pull ghcr.io/${{ github.repository }}-ui:latest\n`;
+            changelogBody += '```\n\n';
+
+            // Save changelog to file
+            const fs = require('fs');
+            fs.writeFileSync('CHANGELOG.md', changelogBody);
+
+            core.setOutput('changelog', changelogBody);
+
+            return changelogBody;
+
+      - name: Update package.json version
+        run: |
+          VERSION="${{ steps.validate.outputs.version_clean }}"
+
+          # Update version in package.json
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+          echo "✅ Updated package.json to version $VERSION"
+
+      - name: Commit version bump
+        run: |
+          TAG_NAME="${{ steps.validate.outputs.tag_name }}"
+          VERSION="${{ steps.validate.outputs.version_clean }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add package.json package-lock.json
+          git commit -m "chore(release): bump version to ${VERSION}" || echo "No changes to commit"
+
+          # Create and push tag
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+          git push origin HEAD:main
+          git push origin "$TAG_NAME"
+
+          echo "✅ Created and pushed tag $TAG_NAME"
+
+      - name: Create GitHub Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+            const tagName = '${{ steps.validate.outputs.tag_name }}';
+            const isPrerelease = ${{ github.event.inputs.prerelease }};
+
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tagName,
+              name: `Release ${tagName}`,
+              body: changelog,
+              draft: false,
+              prerelease: isPrerelease,
+            });
+
+            console.log(`✅ Created release: ${release.data.html_url}`);
+
+            // Add release URL to summary
+            core.summary
+              .addHeading(`🎉 Release ${tagName} Created!`)
+              .addLink('View Release', release.data.html_url)
+              .addRaw('\n\n')
+              .addHeading('📝 Changelog')
+              .addRaw(changelog)
+              .write();
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## ✅ Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.validate.outputs.version_clean }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.validate.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** ${{ github.event.inputs.prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Docker images are being built and published automatically" >> $GITHUB_STEP_SUMMARY
+          echo "2. Check the 'Build and Push Docker Images' workflow for progress" >> $GITHUB_STEP_SUMMARY
+          echo "3. Images will be available at:" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`ghcr.io/${{ github.repository }}:${{ steps.validate.outputs.version_clean }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`ghcr.io/${{ github.repository }}-ui:${{ steps.validate.outputs.version_clean }}\`" >> $GITHUB_STEP_SUMMARY
