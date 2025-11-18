@@ -154,16 +154,7 @@ jobs:
 
             return changelogBody;
 
-      - name: Update package.json version
-        run: |
-          VERSION="${{ steps.validate.outputs.version_clean }}"
-
-          # Update version in package.json
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-
-          echo "✅ Updated package.json to version $VERSION"
-
-      - name: Commit version bump
+      - name: Create and push tag
         run: |
           TAG_NAME="${{ steps.validate.outputs.tag_name }}"
           VERSION="${{ steps.validate.outputs.version_clean }}"
@@ -171,12 +162,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add package.json package-lock.json
-          git commit -m "chore(release): bump version to ${VERSION}" || echo "No changes to commit"
-
-          # Create and push tag
+          # Create tag from current HEAD
           git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
-          git push origin HEAD:main
+
+          # Push only the tag (not commits to main)
           git push origin "$TAG_NAME"
 
           echo "✅ Created and pushed tag $TAG_NAME"

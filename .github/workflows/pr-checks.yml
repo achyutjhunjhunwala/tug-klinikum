@@ -25,22 +25,33 @@ jobs:
         with:
           script: |
             const owner = 'achyutjhunjhunwala';
-            
+            const dependabotUsers = ['dependabot[bot]', 'dependabot'];
+
             // If it's a pull request event
             if (context.eventName === 'pull_request') {
               const prAuthor = context.payload.pull_request.user.login;
               console.log(`PR author: ${prAuthor}`);
-              
+
+              // Check if PR is from owner
               if (prAuthor === owner) {
                 console.log('PR created by owner - running checks');
                 core.setOutput('should-run', 'true');
                 core.setOutput('pr-number', context.payload.pull_request.number);
                 return;
-              } else {
-                console.log('PR created by external contributor - checks require owner approval');
-                core.setOutput('should-run', 'false');
+              }
+
+              // Check if PR is from Dependabot
+              if (dependabotUsers.includes(prAuthor)) {
+                console.log('PR created by Dependabot - automatically running checks');
+                core.setOutput('should-run', 'true');
+                core.setOutput('pr-number', context.payload.pull_request.number);
                 return;
               }
+
+              // External contributor - requires approval
+              console.log('PR created by external contributor - checks require owner approval');
+              core.setOutput('should-run', 'false');
+              return;
             }
             
             // If it's a comment event
@@ -290,24 +301,26 @@ jobs:
             const prAuthor = context.payload.pull_request.user.login;
             
             const comment = `## 🔍 Quality Checks Required
-            
-            Hi @${prAuthor}! Thanks for your contribution! 
-            
+
+            Hi @${prAuthor}! Thanks for your contribution!
+
             For security reasons, quality checks on external PRs require manual approval from the repository owner.
-            
+
             **@achyutjhunjhunwala** can trigger the checks by commenting:
             - \`/run-checks\` or \`/check\`
-            
+
             The checks will run:
             - 🔍 ESLint
-            - 💅 Prettier formatting  
+            - 💅 Prettier formatting
             - 🔧 TypeScript compilation
             - 🧪 Tests
             - 🏗️ Build verification
-            
+
             Please ensure your code follows the project's standards before requesting a review.
-            
+
             ---
+            *Note: Dependabot PRs automatically run quality checks without manual approval.*
+
             *This is an automated message to protect against malicious code execution.*`;
             
             await github.rest.issues.createComment({

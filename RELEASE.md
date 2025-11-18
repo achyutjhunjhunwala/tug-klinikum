@@ -8,10 +8,9 @@ The release process is automated using GitHub Actions. When you create a new rel
 
 1. **Version Validation**: The workflow validates the version format
 2. **Changelog Generation**: A changelog is automatically generated from commits and pull requests
-3. **Package Version Update**: `package.json` is updated with the new version
-4. **Git Tag Creation**: A git tag is created and pushed
-5. **GitHub Release**: A GitHub release is created with the changelog
-6. **Docker Images**: Docker images are built and published to GitHub Container Registry (ghcr.io)
+3. **Git Tag Creation**: A git tag is created from the current main branch and pushed
+4. **GitHub Release**: A GitHub release is created with the changelog
+5. **Docker Images**: Docker images are built and published to GitHub Container Registry (ghcr.io)
 
 ## Creating a Release
 
@@ -40,10 +39,11 @@ The release process is automated using GitHub Actions. When you create a new rel
    - The workflow will:
      - Validate the version
      - Generate the changelog
-     - Update package.json
-     - Create a git tag
+     - Create a git tag from current main branch
      - Create the GitHub release
      - Trigger the Docker build workflow
+
+   **Note**: The workflow does NOT update `package.json` in the repository. The git tag serves as the source of truth for the version. This avoids issues with branch protection rules and keeps the release process simple.
 
 5. **Verify the Release**
    - Check the Releases page for your new release
