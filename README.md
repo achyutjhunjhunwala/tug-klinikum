@@ -1,6 +1,8 @@
 # 🏥 Hospital Emergency Room Scraper
 
-[![Build and Push Docker Images](https://github.com/achyutjhunjhunwala/tug-klinikum/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/achyutjhunjhunwala/tug-klinikum/actions/workflows/docker-build.yml)
+[![Build and Push Docker Images](https://github.com/achyutjhunjhunwala/tug-klinikum/actions/workflows/docker-build.yml/badge.svg)](https://github.com/achyutjhunjhunwala/tug-klinikum/actions/workflows/docker-build.yml)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/achyutjhunjhunwala/tug-klinikum)](https://github.com/achyutjhunjhunwala/tug-klinikum/releases)
+[![Docker Image](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/achyutjhunjhunwala/tug-klinikum/pkgs/container/tug-klinikum)
 
 Real-time monitoring of emergency room wait times for Vivantes Friedrichshain Hospital (Adult & Children departments).
 
@@ -245,6 +247,7 @@ npm run dev
 - **[📊 Observability.md](./docs/Observability.md)**: Monitoring, logging, and metrics guide
 - **[🌐 Complete UI Documentation](./ui/README.md)**: Full-stack web dashboard (backend + frontend)
 - **[🧪 UI Testing Plan](./ui/TESTING_PLAN.md)**: Comprehensive testing strategy for the web dashboard
+- **[🚀 RELEASE.md](./RELEASE.md)**: Release process and versioning guide
 
 ## License
 
