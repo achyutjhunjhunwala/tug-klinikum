@@ -44,7 +44,7 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build and push scraper image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         target: production
@@ -97,7 +97,7 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build and push UI image
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: ./ui
         platforms: linux/amd64
