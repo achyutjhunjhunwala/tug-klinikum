@@ -12,6 +12,34 @@ The release process is automated using GitHub Actions. When you create a new rel
 4. **GitHub Release**: A GitHub release is created with the changelog
 5. **Docker Images**: Docker images are built and published to GitHub Container Registry (ghcr.io)
 
+## Setup (One-Time)
+
+### Configure RELEASE_TOKEN Secret
+
+The release workflow requires a Personal Access Token (PAT) to trigger the Docker build workflow. This is needed because GitHub's default `GITHUB_TOKEN` cannot trigger other workflows (security feature).
+
+**Steps to create and configure:**
+
+1. **Create a Personal Access Token:**
+   - Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+   - Click "Generate new token (classic)"
+   - Name: `Release Workflow Token`
+   - Expiration: Choose based on your needs (or no expiration for automation)
+   - Select permissions:
+     - ✅ `repo` (Full control of private repositories)
+     - ✅ `workflow` (Update GitHub Action workflows)
+   - Click "Generate token"
+   - **Copy the token** (you won't see it again!)
+
+2. **Add Token as Repository Secret:**
+   - Go to repository → Settings → Secrets and variables → Actions
+   - Click "New repository secret"
+   - Name: `RELEASE_TOKEN`
+   - Value: Paste the PAT you copied
+   - Click "Add secret"
+
+**Note:** Without this token, releases will be created but Docker images won't be built automatically.
+
 ## Creating a Release
 
 ### Prerequisites
@@ -19,6 +47,7 @@ The release process is automated using GitHub Actions. When you create a new rel
 - You must have write access to the repository
 - You must be on the `main` branch
 - All changes you want to include in the release should be merged to `main`
+- **Required**: A `RELEASE_TOKEN` secret must be configured in repository settings (see Setup section below)
 
 ### Steps
 
