@@ -98,7 +98,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # For PR comments, we need to checkout the PR branch
           ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/merge', needs.check-permissions.outputs.pr-number) || github.head_ref }}
