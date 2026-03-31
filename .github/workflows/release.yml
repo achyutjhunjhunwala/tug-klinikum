@@ -79,7 +79,7 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const tagName = '${{ steps.validate.outputs.tag_name }}';
@@ -171,7 +171,7 @@ jobs:
           echo "✅ Created and pushed tag $TAG_NAME"
 
       - name: Create GitHub Release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.RELEASE_TOKEN }}
           script: |
